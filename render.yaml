@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: finance-dashboard
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: out
+    # O Next.js já gera a pasta /out com o output: "export".
+    # Variáveis de ambiente podem ser adicionadas no dashboard do Render, se necessário.

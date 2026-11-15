@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { getFinanceData, Transaction, Summary } from '@/lib/financeService';
 import {
   TrendingUp,
   TrendingDown,
@@ -19,8 +20,16 @@ import {
   Sun,
   Moon,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   CheckCircle2,
   Clock,
+  Eye,
+  EyeOff,
+  Download,
+  Sparkles,
+  ArrowRight,
+  Filter,
 } from 'lucide-react';
 import {
   PieChart,
@@ -36,46 +45,6 @@ import {
   Legend,
 } from 'recharts';
 
-interface Transaction {
-  id: string;
-  date: string;
-  type: 'Entrada' | 'Saída';
-  category: string;
-  description: string;
-  amount: number;
-  status?: string;
-  month?: string;
-}
-
-interface Summary {
-  totalIncome: number;
-  totalExpense: number;
-  balance: number;
-  savingsRate: number;
-  paidExpense: number;
-  pendingExpense: number;
-  paidIncome: number;
-  pendingIncome: number;
-  paidExpensePercent: number;
-  paidIncomePercent: number;
-  topCategory: { name: string; amount: number };
-  period: string;
-  selectedMonth: string;
-  availableMonths: string[];
-  sheetMetrics?: {
-    monthIncome: number;
-    monthExpenses: number;
-    monthBalance: number;
-    monthSavingsRate: string;
-    yearIncome: number;
-    yearExpenses: number;
-    yearBalance: number;
-    yearSavingsRate: string;
-    yearAvgMonthlyExpense: number;
-    yearEndAccumulated: number;
-  };
-}
-
 // Paleta expandida de alta distinção e contraste cromático
 const CATEGORY_COLORS: Record<string, string> = {
   Moradia: '#6366F1', // Indigo Elétrico
@@ -88,48 +57,45 @@ const CATEGORY_COLORS: Record<string, string> = {
   'Alimentação': '#EA580C', // Laranja Queimado
   'Alimentacao': '#EA580C',
   Transporte: '#0284C7', // Azul Céu
-  Saúde: '#E11D48', // Carmim / Rose
-  'Saude': '#E11D48',
-  Educação: '#7C3AED', // Púrpura Intenso
-  'Educacao': '#7C3AED',
-  Lazer: '#D946EF', // Fúcsia / Magenta
-  Contas: '#F97316', // Laranja Vivo
-  Investimentos: '#059669', // Esmeralda Escuro
-  Vestuário: '#DB2777', // Rosa Escuro
-  'Salário': '#10B981', // Verde Esmeralda
-  'SalÃ¡rio': '#10B981',
-  Entregas: '#14B8A6', // Verde Água / Teal
-  'Saldo': '#06B6D4', // Ciano
-  'Saldo ': '#06B6D4',
-  Outros: '#0D9488', // Teal Oceânico
+  Saúde: '#10B981', // Verde Esmeralda
+  'Saude': '#10B981',
+  Lazer: '#06B6D4', // Ciano
+  Educação: '#84CC16', // Lima
+  'Educacao': '#84CC16',
+  Investimentos: '#14B8A6', // Teal
+  Assinaturas: '#A855F7', // Púrpura Claro
+  Roupas: '#F43F5E', // Rose
+  Contas: '#64748B', // Cinza Azulado
+  Geral: '#94A3B8', // Cinza Claro
+  Salário: '#10B981',
+  'Salario': '#10B981',
+  Renda: '#22C55E',
 };
 
-// Ampla gama com 24 cores harmonicamente selecionadas e sem repetição
 const FALLBACK_PALETTE = [
-  '#6366F1', // Indigo
-  '#EC4899', // Pink
-  '#F59E0B', // Amber
-  '#10B981', // Emerald
-  '#3B82F6', // Blue
-  '#8B5CF6', // Violet
-  '#14B8A6', // Teal
-  '#F97316', // Orange
-  '#06B6D4', // Cyan
-  '#84CC16', // Lime
-  '#E11D48', // Rose
-  '#D946EF', // Fuchsia
-  '#0284C7', // Sky Blue
-  '#EA580C', // Deep Orange
-  '#9333EA', // Purple
-  '#059669', // Forest Emerald
-  '#CA8A04', // Dark Yellow/Gold
-  '#2563EB', // Cobalt Blue
-  '#BE185D', // Magenta Dark
-  '#4F46E5', // Ultramarine
-  '#15803D', // Green
-  '#C026D3', // Orchidea
-  '#0891B2', // Cerulean
-  '#EAB308', // Sun Yellow
+  '#6366F1',
+  '#EC4899',
+  '#F59E0B',
+  '#10B981',
+  '#3B82F6',
+  '#8B5CF6',
+  '#14B8A6',
+  '#F97316',
+  '#06B6D4',
+  '#84CC16',
+  '#D946EF',
+  '#0284C7',
+  '#EA580C',
+  '#9333EA',
+  '#059669',
+  '#CA8A04',
+  '#2563EB',
+  '#BE185D',
+  '#4F46E5',
+  '#15803D',
+  '#C026D3',
+  '#0891B2',
+  '#EAB308',
 ];
 
 function getCategoryColor(category: string, index?: number): string {
@@ -143,7 +109,6 @@ function getCategoryColor(category: string, index?: number): string {
   if (index !== undefined) {
     return FALLBACK_PALETTE[index % FALLBACK_PALETTE.length];
   }
-  // Hash consistente para categorias desconhecidas
   let hash = 0;
   for (let i = 0; i < category.length; i++) {
     hash = category.charCodeAt(i) + ((hash << 5) - hash);
@@ -167,86 +132,41 @@ const MONTH_NAMES_PT: Record<string, string> = {
   December: 'Dezembro',
 };
 
-function formatMonthLabel(monthKey: string) {
-  if (monthKey === 'ALL') return 'Todos os Meses (Geral)';
-  const [mName, year] = monthKey.split('/');
-  const translated = MONTH_NAMES_PT[mName] || mName;
-  return year ? `${translated} / ${year}` : translated;
+function formatMonthLabel(monthStr: string): string {
+  if (monthStr === 'ALL') return 'Todos os Meses (Geral)';
+  const [engMonth, year] = monthStr.split('/');
+  const ptMonth = MONTH_NAMES_PT[engMonth] || engMonth;
+  return year ? `${ptMonth} de ${year}` : ptMonth;
 }
 
-// ─── Skeleton Loading ────────────────────────────────────────────────────────
-function SkeletonCard({ isLight }: { isLight: boolean }) {
-  return (
-    <div
-      className={`rounded-2xl p-5 border shadow-sm animate-pulse ${
-        isLight
-          ? 'bg-white border-slate-200'
-          : 'bg-slate-900/60 border-slate-800/80'
-      }`}
-    >
-      <div className="flex items-center justify-between mb-4">
-        <div className={`h-3 w-28 rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-        <div className={`h-8 w-8 rounded-lg ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-      </div>
-      <div className={`h-7 w-36 rounded-md mb-3 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-      <div className={`h-1.5 w-full rounded-full mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-      <div className="flex justify-between">
-        <div className={`h-3 w-20 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-        <div className={`h-3 w-20 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-      </div>
-    </div>
-  );
-}
-
-function SkeletonTable({ isLight }: { isLight: boolean }) {
-  return (
-    <div
-      className={`rounded-2xl overflow-hidden border shadow-sm animate-pulse ${
-        isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-slate-800/80'
-      }`}
-    >
-      <div className={`p-5 border-b ${isLight ? 'border-slate-200 bg-slate-50/50' : 'border-slate-800/80 bg-slate-950/20'}`}>
-        <div className={`h-5 w-48 rounded-md mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-        <div className={`h-3 w-64 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-      </div>
-      <div className="divide-y divide-slate-800/40">
-        {[...Array(6)].map((_, i) => (
-          <div key={i} className="flex items-center gap-4 px-6 py-4">
-            <div className={`h-3 w-16 rounded-full flex-shrink-0 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-            <div className={`h-3 flex-1 rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-            <div className={`h-5 w-20 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-            <div className={`h-5 w-16 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-            <div className={`h-5 w-16 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-            <div className={`h-3 w-24 rounded-full ml-auto ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-export default function Dashboard() {
-  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [selectedMonth, setSelectedMonth] = useState<string>('December/2026');
+export default function FinanceDashboard() {
   const [summary, setSummary] = useState<Summary | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [expenseByCategory, setExpenseByCategory] = useState<{ name: string; value: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>('dark');
+  const [hideValues, setHideValues] = useState(false);
+
+  // Filtros
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<'ALL' | 'Entrada' | 'Saída'>('ALL');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'Realizado' | 'Previsto'>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  // #9 — Timestamp da última atualização
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [selectedMonth, setSelectedMonth] = useState<string>('December/2026');
 
-  // Inicializar tema com base na preferência salva no localStorage ou preferência do sistema
+  // Inicializar preferências do localStorage
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') as 'dark' | 'light' | null;
     if (savedTheme) {
       setTheme(savedTheme);
     } else if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) {
       setTheme('light');
+    }
+
+    const savedHideValues = localStorage.getItem('hideValues');
+    if (savedHideValues !== null) {
+      setHideValues(savedHideValues === 'true');
     }
   }, []);
 
@@ -256,18 +176,21 @@ export default function Dashboard() {
     localStorage.setItem('theme', newTheme);
   };
 
-  const fetchData = async (monthToFetch?: string) => {
+  const toggleHideValues = () => {
+    const nextVal = !hideValues;
+    setHideValues(nextVal);
+    localStorage.setItem('hideValues', String(nextVal));
+  };
+
+  const fetchData = async (monthToFetch?: string, forceRefresh = false) => {
     try {
       setRefreshing(true);
       const targetMonth = monthToFetch !== undefined ? monthToFetch : selectedMonth;
-      const res = await fetch(`/api/finance?month=${encodeURIComponent(targetMonth)}`);
-      const data = await res.json();
+      const data = await getFinanceData(targetMonth, forceRefresh);
       if (data.summary) {
         setSummary(data.summary);
         setTransactions(data.transactions);
         setExpenseByCategory(data.expenseByCategory);
-        // #9 — Marcar timestamp de sucesso
-        setLastUpdated(new Date());
       }
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
@@ -280,6 +203,31 @@ export default function Dashboard() {
   useEffect(() => {
     fetchData(selectedMonth);
   }, [selectedMonth]);
+
+  const availableMonths = useMemo(() => {
+    return summary?.availableMonths || ['December/2026'];
+  }, [summary]);
+
+  // Navegação rápida de mês
+  const handlePrevMonth = () => {
+    const idx = availableMonths.indexOf(selectedMonth);
+    if (idx > 0) {
+      setSelectedMonth(availableMonths[idx - 1]);
+    } else if (idx === -1 && availableMonths.length > 0) {
+      setSelectedMonth(availableMonths[0]);
+    }
+  };
+
+  const handleNextMonth = () => {
+    const idx = availableMonths.indexOf(selectedMonth);
+    if (idx !== -1 && idx < availableMonths.length - 1) {
+      setSelectedMonth(availableMonths[idx + 1]);
+    }
+  };
+
+  const currentMonthIndex = availableMonths.indexOf(selectedMonth);
+  const canGoPrev = currentMonthIndex > 0;
+  const canGoNext = currentMonthIndex !== -1 && currentMonthIndex < availableMonths.length - 1;
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -301,7 +249,6 @@ export default function Dashboard() {
       return matchesSearch && matchesType && matchesStatus && matchesCategory;
     });
 
-    // Garantir ordenação: Entradas sempre primeiro, e depois cronológico
     return list.sort((a, b) => {
       if (a.type !== b.type) {
         return a.type === 'Entrada' ? -1 : 1;
@@ -330,526 +277,479 @@ export default function Dashboard() {
   }, [transactions]);
 
   const formatBRL = (val: number) => {
+    if (hideValues) return 'R$ ••••••';
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   };
 
-  const isLight = theme === 'light';
+  const exportCSV = () => {
+    if (!filteredTransactions.length) return;
+    const headers = ['Data', 'Descrição', 'Categoria', 'Tipo', 'Status', 'Valor (R$)'];
+    const rows = filteredTransactions.map((tx) => [
+      `"${tx.date}"`,
+      `"${tx.description.replace(/"/g, '""')}"`,
+      `"${tx.category.replace(/"/g, '""')}"`,
+      `"${tx.type}"`,
+      `"${tx.status?.trim().toLowerCase() === 'realizado' ? (tx.type === 'Entrada' ? 'Recebido' : 'Pago') : 'Pendente'}"`,
+      tx.amount.toFixed(2),
+    ]);
 
-  // #1 — Skeleton Loading (substituindo o spinner)
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `finance_${selectedMonth.replace(/[^a-zA-Z0-9]/g, '_')}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const isLight = theme === 'light';
+  const sm = summary?.sheetMetrics;
+
   if (loading) {
     return (
       <div
-        className={`min-h-screen transition-colors duration-200 p-4 sm:p-6 lg:p-8 ${
-          isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-slate-100'
+        className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-200 ${
+          isLight ? 'bg-slate-50 text-slate-800' : 'bg-slate-950 text-white'
         }`}
       >
-        {/* Header skeleton */}
-        <div
-          className={`max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between pb-6 border-b gap-4 mb-6 animate-pulse ${
-            isLight ? 'border-slate-200' : 'border-slate-800'
-          }`}
-        >
-          <div className="flex items-center gap-3">
-            <div className={`w-12 h-12 rounded-xl ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-            <div>
-              <div className={`h-7 w-48 rounded-md mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-              <div className={`h-3 w-64 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-            </div>
-          </div>
-          <div className="flex gap-3">
-            <div className={`h-9 w-32 rounded-lg ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-            <div className={`h-9 w-24 rounded-lg ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-            <div className={`h-9 w-28 rounded-lg bg-indigo-500/30`} />
+        <div className="relative">
+          <div className="w-16 h-16 rounded-2xl bg-indigo-600/10 flex items-center justify-center animate-pulse">
+            <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
           </div>
         </div>
-
-        {/* KPI skeleton cards */}
-        <div className="max-w-7xl mx-auto space-y-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <SkeletonCard key={i} isLight={isLight} />
-            ))}
-          </div>
-
-          {/* Charts skeleton */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {[0, 1].map((i) => (
-              <div
-                key={i}
-                className={`rounded-2xl p-6 border shadow-sm animate-pulse ${
-                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-slate-800/80'
-                }`}
-              >
-                <div className={`h-5 w-40 rounded-md mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
-                <div className={`h-3 w-56 rounded-full mb-6 ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
-                <div className={`h-64 w-full rounded-xl ${isLight ? 'bg-slate-100' : 'bg-slate-800/60'}`} />
-              </div>
-            ))}
-          </div>
-
-          {/* Table skeleton */}
-          <SkeletonTable isLight={isLight} />
-        </div>
+        <p className="mt-4 text-sm font-medium tracking-wide text-slate-400">
+          Carregando inteligência financeira...
+        </p>
       </div>
     );
   }
 
-  const sm = summary?.sheetMetrics;
-  const availableMonths = summary?.availableMonths || ['November/2026', 'December/2026', 'January/2027', 'February/2027'];
+  const totalExpenseVal = expenseByCategory.reduce((sum, item) => sum + item.value, 0);
 
   return (
     <div
-      className={`min-h-screen transition-colors duration-200 p-4 sm:p-6 lg:p-8 ${
-        isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-slate-100'
+      className={`min-h-screen transition-colors duration-200 p-4 sm:p-6 lg:p-8 font-sans ${
+        isLight ? 'bg-slate-50 text-slate-900' : 'bg-[#0B0F19] text-slate-100'
       }`}
     >
-      {/* Header */}
+      {/* Top Navbar Glass Header */}
       <header
-        className={`max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between pb-6 border-b gap-4 transition-colors duration-200 ${
-          isLight ? 'border-slate-200' : 'border-slate-800'
+        className={`max-w-7xl mx-auto rounded-3xl p-4 sm:p-5 border backdrop-blur-xl transition-all duration-300 shadow-sm flex flex-col md:flex-row items-start md:items-center justify-between gap-4 sticky top-4 z-40 ${
+          isLight
+            ? 'bg-white/90 border-slate-200/90 shadow-slate-200/50'
+            : 'bg-slate-900/80 border-slate-800/80 shadow-black/40'
         }`}
       >
-        <div>
-          <div className="flex items-center gap-3">
-            <div
-              className={`p-2.5 rounded-xl border ${
-                isLight
-                  ? 'bg-indigo-50 text-indigo-600 border-indigo-200'
-                  : 'bg-indigo-600/20 text-indigo-400 border-indigo-500/30'
+        {/* Identidade da Marca & Status */}
+        <div className="flex items-center gap-3.5">
+          <div className="relative">
+            <div className="p-2.5 rounded-2xl bg-gradient-to-tr from-indigo-600 to-violet-500 text-white shadow-lg shadow-indigo-500/25 flex items-center justify-center">
+              <PieIcon className="w-5 h-5" />
+            </div>
+            <span className="absolute -bottom-0.5 -right-0.5 flex h-2.5 w-2.5">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 ring-2 ring-slate-900" />
+            </span>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold tracking-tight bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+                FinDash Pro
+              </h1>
+              <span className="text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                Static SSG
+              </span>
+            </div>
+            <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+              Mês ativo: <strong className="font-semibold text-slate-300">{formatMonthLabel(selectedMonth)}</strong>
+            </p>
+          </div>
+        </div>
+
+        {/* Controles de Ação do Header */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 w-full md:w-auto justify-end">
+          {/* Seletor Rápido de Mês com Setas */}
+          <div
+            className={`flex items-center rounded-xl border p-1 ${
+              isLight ? 'bg-slate-100/80 border-slate-300' : 'bg-slate-950/60 border-slate-800'
+            }`}
+          >
+            <button
+              onClick={handlePrevMonth}
+              disabled={!canGoPrev}
+              className={`p-1.5 rounded-lg transition disabled:opacity-30 disabled:cursor-not-allowed ${
+                isLight ? 'hover:bg-white text-slate-700' : 'hover:bg-slate-800 text-slate-300'
               }`}
+              title="Mês anterior"
             >
-              <FileSpreadsheet className="w-7 h-7" />
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+
+            <div className="relative">
+              <select
+                value={selectedMonth}
+                onChange={(e) => setSelectedMonth(e.target.value)}
+                className={`appearance-none pl-3 pr-7 py-1 text-xs font-semibold bg-transparent cursor-pointer focus:outline-none ${
+                  isLight ? 'text-slate-800' : 'text-slate-200'
+                }`}
+                title="Selecione o mês"
+              >
+                {availableMonths.map((m) => (
+                  <option
+                    key={m}
+                    value={m}
+                    className={isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}
+                  >
+                    {formatMonthLabel(m)}
+                  </option>
+                ))}
+                <option
+                  value="ALL"
+                  className={isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}
+                >
+                  Todos os Meses (Geral)
+                </option>
+              </select>
+              <ChevronDown
+                className={`w-3.5 h-3.5 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60 ${
+                  isLight ? 'text-slate-700' : 'text-slate-300'
+                }`}
+              />
+            </div>
+
+            <button
+              onClick={handleNextMonth}
+              disabled={!canGoNext}
+              className={`p-1.5 rounded-lg transition disabled:opacity-30 disabled:cursor-not-allowed ${
+                isLight ? 'hover:bg-white text-slate-700' : 'hover:bg-slate-800 text-slate-300'
+              }`}
+              title="Próximo mês"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Botão Modo Privacidade (Ocultar Valores) */}
+          <button
+            onClick={toggleHideValues}
+            className={`p-2 rounded-xl border text-sm transition shadow-sm active:scale-95 ${
+              isLight
+                ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+            }`}
+            title={hideValues ? 'Mostrar valores monetários' : 'Ocultar valores monetários (Modo Privacidade)'}
+          >
+            {hideValues ? <EyeOff className="w-4 h-4 text-amber-500" /> : <Eye className="w-4 h-4" />}
+          </button>
+
+          {/* Botão Alternar Light / Dark Mode */}
+          <button
+            onClick={toggleTheme}
+            className={`p-2 rounded-xl border text-sm transition shadow-sm active:scale-95 ${
+              isLight
+                ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+            }`}
+            title={isLight ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
+          >
+            {isLight ? <Moon className="w-4 h-4 text-indigo-600" /> : <Sun className="w-4 h-4 text-amber-400" />}
+          </button>
+
+          {/* Abrir Planilha Google */}
+          <a
+            href="https://docs.google.com/spreadsheets/d/1HXSVSwyey5_EhfmvFcDB9a7X9y1bcdaOgqLP2TDuNSQ/edit"
+            target="_blank"
+            rel="noreferrer"
+            className={`hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl border text-xs font-medium transition ${
+              isLight
+                ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                : 'bg-slate-900 border-slate-800 text-slate-300 hover:bg-slate-800'
+            }`}
+          >
+            <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-500" />
+            <span>Planilha</span>
+          </a>
+
+          {/* Botão Atualizar */}
+          <button
+            onClick={() => fetchData(selectedMonth, true)}
+            disabled={refreshing}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-xs transition shadow-lg shadow-indigo-600/25 active:scale-95 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>{refreshing ? 'Buscando...' : 'Atualizar'}</span>
+          </button>
+        </div>
+      </header>
+
+      {/* Conteúdo Principal */}
+      <main className="max-w-7xl mx-auto mt-6 space-y-6">
+        {/* Banner de Resumo Inteligente / Insights */}
+        <div
+          className={`rounded-2xl p-4 border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 ${
+            isLight
+              ? 'bg-gradient-to-r from-indigo-50 via-white to-purple-50 border-indigo-100 text-slate-800'
+              : 'bg-gradient-to-r from-indigo-950/40 via-slate-900/60 to-purple-950/40 border-indigo-900/30 text-slate-200'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              <Sparkles className="w-4 h-4 text-indigo-400" />
             </div>
             <div>
-              <h1
-                className={`text-2xl sm:text-3xl font-bold ${
-                  isLight
-                    ? 'text-slate-900'
-                    : 'bg-gradient-to-r from-white via-slate-200 to-indigo-400 bg-clip-text text-transparent'
+              <p className="text-xs font-semibold uppercase tracking-wider text-indigo-400">
+                Diagnóstico do Período
+              </p>
+              <p className="text-sm font-medium mt-0.5">
+                {(summary?.balance ?? 0) >= 0 ? (
+                  <>
+                    Superávit de <strong className="text-emerald-400 font-bold">{formatBRL(summary?.balance ?? 0)}</strong> com taxa de poupança em{' '}
+                    <strong className="text-emerald-400 font-bold">{summary?.savingsRate}%</strong>.
+                  </>
+                ) : (
+                  <>
+                    Déficit financeiro de <strong className="text-rose-400 font-bold">{formatBRL(summary?.balance ?? 0)}</strong>. Atenção aos gastos pendentes!
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 self-end sm:self-auto text-xs font-semibold px-3 py-1.5 rounded-xl bg-slate-900/40 border border-slate-700/50">
+            <span>Status das Despesas:</span>
+            <span className="text-emerald-400">{summary?.paidExpensePercent}% Pago</span>
+          </div>
+        </div>
+
+        {/* Grid de KPIs do Mês */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* Card Entradas */}
+          <div
+            className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
+              isLight
+                ? 'bg-white border-slate-200 hover:border-emerald-500/50 shadow-slate-200/40'
+                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-emerald-500/40 shadow-black/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Entradas
+              </span>
+              <div
+                className={`p-2 rounded-xl ${
+                  isLight ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
                 }`}
               >
-                Controle Financeiro
-              </h1>
-              <p
-                className={`text-sm flex items-center gap-2 mt-0.5 ${
-                  isLight ? 'text-slate-600' : 'text-slate-400'
+                <TrendingUp className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className={`text-2xl font-black tracking-tight tabular-nums ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                  {formatBRL(summary?.totalIncome ?? 0)}
+                </h3>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  {summary?.paidIncomePercent ?? 0}% rec.
+                </span>
+              </div>
+
+              {/* Barra de Progresso */}
+              <div className="mt-3 w-full bg-slate-200 dark:bg-slate-800/80 rounded-full h-1.5 overflow-hidden flex">
+                <div
+                  className="bg-emerald-500 h-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, summary?.paidIncomePercent ?? 0)}%` }}
+                />
+                <div className="bg-amber-500/50 h-full flex-1" />
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between text-[11px] gap-1 font-mono">
+                <span className="flex items-center gap-1 text-emerald-500">
+                  <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                  <span>{formatBRL(summary?.paidIncome ?? 0)}</span>
+                </span>
+                <span className="flex items-center gap-1 text-amber-500">
+                  <Clock className="w-3 h-3 flex-shrink-0" />
+                  <span>{formatBRL(summary?.pendingIncome ?? 0)}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card Saídas */}
+          <div
+            className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
+              isLight
+                ? 'bg-white border-slate-200 hover:border-rose-500/50 shadow-slate-200/40'
+                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-rose-500/40 shadow-black/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Saídas do Mês
+              </span>
+              <div
+                className={`p-2 rounded-xl ${
+                  isLight ? 'bg-rose-50 text-rose-600' : 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
                 }`}
               >
-                <Calendar className="w-4 h-4 text-indigo-500" />
-                Mês ativo: <strong className="font-semibold">{formatMonthLabel(selectedMonth)}</strong> • Google Sheets Sincronizado
+                <TrendingDown className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className={`text-2xl font-black tracking-tight tabular-nums ${isLight ? 'text-rose-600' : 'text-rose-400'}`}>
+                  {formatBRL(summary?.totalExpense ?? 0)}
+                </h3>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-500/10 text-rose-400 border border-rose-500/20">
+                  {summary?.paidExpensePercent ?? 0}% pago
+                </span>
+              </div>
+
+              {/* Barra de Progresso */}
+              <div className="mt-3 w-full bg-slate-200 dark:bg-slate-800/80 rounded-full h-1.5 overflow-hidden flex">
+                <div
+                  className="bg-emerald-500 h-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, summary?.paidExpensePercent ?? 0)}%` }}
+                />
+                <div className="bg-amber-500/50 h-full flex-1" />
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between text-[11px] gap-1 font-mono">
+                <span className="flex items-center gap-1 text-emerald-500">
+                  <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                  <span>{formatBRL(summary?.paidExpense ?? 0)}</span>
+                </span>
+                <span className="flex items-center gap-1 text-amber-500">
+                  <Clock className="w-3 h-3 flex-shrink-0" />
+                  <span>{formatBRL(summary?.pendingExpense ?? 0)}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card Saldo */}
+          <div
+            className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
+              isLight
+                ? 'bg-white border-slate-200 hover:border-indigo-500/50 shadow-slate-200/40'
+                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-indigo-500/40 shadow-black/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Saldo Restante
+              </span>
+              <div
+                className={`p-2 rounded-xl ${
+                  isLight ? 'bg-indigo-50 text-indigo-600' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                }`}
+              >
+                <Wallet className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <h3 className={`text-2xl font-black tracking-tight tabular-nums ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                {formatBRL(summary?.balance ?? 0)}
+              </h3>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-slate-400">Poupança:</span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  {summary?.savingsRate}%
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Card Maior Categoria */}
+          <div
+            className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
+              isLight
+                ? 'bg-white border-slate-200 hover:border-slate-300 shadow-slate-200/40'
+                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-slate-700 shadow-black/20'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Maior Impacto
+              </span>
+              <div
+                className="p-2 rounded-xl border"
+                style={{
+                  backgroundColor: `${getCategoryColor(summary?.topCategory.name || '')}15`,
+                  borderColor: `${getCategoryColor(summary?.topCategory.name || '')}30`,
+                  color: getCategoryColor(summary?.topCategory.name || ''),
+                }}
+              >
+                <AlertCircle className="w-4 h-4" />
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <div className="flex items-center gap-2">
+                <span
+                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse"
+                  style={{ backgroundColor: getCategoryColor(summary?.topCategory.name || '') }}
+                />
+                <h3
+                  className="text-2xl font-black tracking-tight truncate"
+                  style={{ color: getCategoryColor(summary?.topCategory.name || '') }}
+                >
+                  {summary?.topCategory.name || '-'}
+                </h3>
+              </div>
+              <p className={`text-xs mt-2 font-mono ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
+                Total: <strong className="text-slate-200">{formatBRL(summary?.topCategory.amount || 0)}</strong>
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3">
-          {/* Seletor de Mês */}
-          <div className="relative">
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className={`appearance-none pl-4 pr-10 py-2 rounded-lg text-sm font-medium border cursor-pointer transition shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
-                isLight
-                  ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
-                  : 'bg-slate-900 border-slate-700/80 text-slate-200 hover:bg-slate-850'
-              }`}
-              title="Selecione o mês"
-            >
-              {availableMonths.map((m) => (
-                <option key={m} value={m} className={isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}>
-                  📅 {formatMonthLabel(m)}
-                </option>
-              ))}
-              <option value="ALL" className={isLight ? 'bg-white text-slate-900' : 'bg-slate-900 text-slate-100'}>
-                📊 Todos os Meses (Geral)
-              </option>
-            </select>
-            <ChevronDown
-              className={`w-4 h-4 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none ${
-                isLight ? 'text-slate-500' : 'text-slate-400'
-              }`}
-            />
-          </div>
-
-          {/* Botão Alternar Light / Dark Mode */}
-          <button
-            onClick={toggleTheme}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-sm font-medium transition shadow-sm active:scale-95 ${
-              isLight
-                ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-            title={isLight ? 'Ativar Modo Escuro' : 'Ativar Modo Claro'}
-          >
-            {isLight ? (
-              <>
-                <Moon className="w-4 h-4 text-indigo-600" />
-                <span className="hidden sm:inline">Dark Mode</span>
-              </>
-            ) : (
-              <>
-                <Sun className="w-4 h-4 text-amber-400" />
-                <span className="hidden sm:inline">Light Mode</span>
-              </>
-            )}
-          </button>
-
-          {/* Abrir Planilha */}
-          <a
-            href="https://docs.google.com/spreadsheets/d/1HXSVSwyey5_EhfmvFcDB9a7X9y1bcdaOgqLP2TDuNSQ/edit"
-            target="_blank"
-            rel="noreferrer"
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-lg border text-sm font-medium transition ${
-              isLight
-                ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100 hover:text-slate-900'
-                : 'bg-slate-900 border-slate-700/80 text-slate-300 hover:bg-slate-800 hover:text-white'
-            }`}
-          >
-            Abrir Planilha
-          </a>
-
-          {/* #9 — Timestamp da última atualização */}
-          {lastUpdated && (
-            <span className="text-xs text-slate-500">
-              Atualizado às {lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
-            </span>
-          )}
-
-          {/* Botão Atualizar */}
-          <button
-            onClick={() => fetchData()}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-medium text-sm transition shadow-lg shadow-indigo-600/20 active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-            {refreshing ? 'Atualizando...' : 'Atualizar'}
-          </button>
-        </div>
-      </header>
-
-      <main className="max-w-7xl mx-auto mt-6 space-y-6">
-        {/* Painel do Mês */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <h2
-              className={`text-sm font-semibold uppercase tracking-wider ${
-                isLight ? 'text-slate-600' : 'text-slate-400'
-              }`}
-            >
-              Visão do Mês ({formatMonthLabel(selectedMonth)})
-            </h2>
-            <span
-              className={`text-xs px-2.5 py-0.5 rounded-full border ${
-                isLight
-                  ? 'bg-indigo-50 text-indigo-700 border-indigo-200'
-                  : 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20'
-              }`}
-            >
-              Calculado em Tempo Real
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* #2 + #3 + #7 — Total de Entradas */}
-            <div
-              className={`rounded-2xl p-5 border-l-4 border-emerald-500 shadow-sm transition ${
-                isLight
-                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-emerald-500/50 shadow-slate-200/50'
-                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-emerald-500/40'
-              }`}
-            >
-              <div
-                className={`flex items-center justify-between ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}
-              >
-                <span className="text-sm font-medium">Total de Entradas</span>
-                <div
-                  className={`p-2 rounded-lg ${
-                    isLight ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400'
-                  }`}
-                >
-                  <TrendingUp className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  {/* #3 — tabular-nums */}
-                  <h3
-                    className={`text-2xl font-bold font-mono tabular-nums truncate ${
-                      isLight ? 'text-emerald-600' : 'text-emerald-400'
-                    }`}
-                  >
-                    {formatBRL(summary?.totalIncome ?? 0)}
-                  </h3>
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                    (summary?.paidIncomePercent ?? 0) === 100
-                      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                      : isLight
-                      ? 'bg-slate-100 text-slate-700'
-                      : 'bg-slate-800 text-slate-300'
-                  }`}>
-                    {summary?.paidIncomePercent ?? 0}% rec.
-                  </span>
-                </div>
-
-                {/* Barra de Progresso Recebido vs Pendente */}
-                <div className="mt-2.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden flex">
-                  <div
-                    className="bg-emerald-500 h-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, summary?.paidIncomePercent ?? 0)}%` }}
-                    title={`Recebido: ${formatBRL(summary?.paidIncome ?? 0)}`}
-                  />
-                  <div
-                    className="bg-amber-500/60 h-full transition-all duration-500 flex-1"
-                    title={`A Receber: ${formatBRL(summary?.pendingIncome ?? 0)}`}
-                  />
-                </div>
-
-                <div className="mt-2.5 flex items-center justify-between text-[11px] gap-1">
-                  <span className={`flex items-center gap-1 truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                    <span>Rec:</span>
-                    <strong className="text-emerald-500 truncate font-mono tabular-nums">{formatBRL(summary?.paidIncome ?? 0)}</strong>
-                  </span>
-                  <span className={`flex items-center gap-1 truncate justify-end ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                    <span>Pend:</span>
-                    <strong className="text-amber-500 truncate font-mono tabular-nums">{formatBRL(summary?.pendingIncome ?? 0)}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* #2 + #3 + #7 — Saídas do Mês */}
-            <div
-              className={`rounded-2xl p-5 border-l-4 border-rose-500 shadow-sm transition ${
-                isLight
-                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-rose-500/50 shadow-slate-200/50'
-                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-rose-500/40'
-              }`}
-            >
-              <div
-                className={`flex items-center justify-between ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}
-              >
-                <span className="text-sm font-medium">Saídas do Mês</span>
-                <div
-                  className={`p-2 rounded-lg ${
-                    isLight ? 'bg-rose-50 text-rose-600' : 'bg-rose-500/10 text-rose-400'
-                  }`}
-                >
-                  <TrendingDown className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="flex items-baseline justify-between gap-2">
-                  {/* #3 — tabular-nums */}
-                  <h3
-                    className={`text-2xl font-bold font-mono tabular-nums truncate ${
-                      isLight ? 'text-rose-600' : 'text-rose-400'
-                    }`}
-                  >
-                    {formatBRL(summary?.totalExpense ?? 0)}
-                  </h3>
-                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full flex-shrink-0 ${
-                    (summary?.paidExpensePercent ?? 0) === 100
-                      ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
-                      : isLight
-                      ? 'bg-slate-100 text-slate-700'
-                      : 'bg-slate-800 text-slate-300'
-                  }`}>
-                    {summary?.paidExpensePercent ?? 0}% pago
-                  </span>
-                </div>
-
-                {/* Barra de Progresso Pago vs Pendente */}
-                <div className="mt-2.5 w-full bg-slate-200 dark:bg-slate-800 rounded-full h-1.5 overflow-hidden flex">
-                  <div
-                    className="bg-emerald-500 h-full transition-all duration-500"
-                    style={{ width: `${Math.min(100, summary?.paidExpensePercent ?? 0)}%` }}
-                    title={`Pago: ${formatBRL(summary?.paidExpense ?? 0)}`}
-                  />
-                  <div
-                    className="bg-amber-500/60 h-full transition-all duration-500 flex-1"
-                    title={`Pendente: ${formatBRL(summary?.pendingExpense ?? 0)}`}
-                  />
-                </div>
-
-                <div className="mt-2.5 flex items-center justify-between text-[11px] gap-1">
-                  <span className={`flex items-center gap-1 truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                    <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-                    <span>Pago:</span>
-                    <strong className="text-emerald-500 truncate font-mono tabular-nums">{formatBRL(summary?.paidExpense ?? 0)}</strong>
-                  </span>
-                  <span className={`flex items-center gap-1 truncate justify-end ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                    <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
-                    <span>Pend:</span>
-                    <strong className="text-amber-500 truncate font-mono tabular-nums">{formatBRL(summary?.pendingExpense ?? 0)}</strong>
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* #2 + #3 + #7 — Saldo do Mês */}
-            <div
-              className={`rounded-2xl p-5 border-l-4 border-indigo-500 shadow-sm transition ${
-                isLight
-                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-indigo-500/50 shadow-slate-200/50'
-                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-indigo-500/40'
-              }`}
-            >
-              <div
-                className={`flex items-center justify-between ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}
-              >
-                <span className="text-sm font-medium">Saldo do Mês</span>
-                <div
-                  className={`p-2 rounded-lg ${
-                    isLight ? 'bg-indigo-50 text-indigo-600' : 'bg-indigo-500/10 text-indigo-400'
-                  }`}
-                >
-                  <Wallet className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-3">
-                {/* #3 — tabular-nums */}
-                <h3
-                  className={`text-2xl font-bold font-mono tabular-nums ${
-                    isLight ? 'text-indigo-600' : 'text-indigo-400'
-                  }`}
-                >
-                  {formatBRL(summary?.balance ?? 0)}
-                </h3>
-                <p
-                  className={`text-xs mt-1 ${
-                    isLight ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                >
-                  Taxa de poupança:{' '}
-                  <span
-                    className={`font-semibold ${
-                      isLight ? 'text-slate-800' : 'text-slate-200'
-                    }`}
-                  >
-                    {summary?.savingsRate}%
-                  </span>
-                </p>
-              </div>
-            </div>
-
-            {/* #2 + #3 + #7 — Maior Categoria de Saída */}
-            <div
-              className={`rounded-2xl p-5 border-l-4 shadow-sm transition ${
-                isLight
-                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-slate-300 shadow-slate-200/50'
-                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-slate-700'
-              }`}
-              style={{ borderLeftColor: getCategoryColor(summary?.topCategory.name || '') }}
-            >
-              <div
-                className={`flex items-center justify-between ${
-                  isLight ? 'text-slate-500' : 'text-slate-400'
-                }`}
-              >
-                <span className="text-sm font-medium">Maior Categoria</span>
-                <div
-                  className="p-2 rounded-lg"
-                  style={{
-                    backgroundColor: `${getCategoryColor(summary?.topCategory.name || '')}1A`,
-                    color: getCategoryColor(summary?.topCategory.name || ''),
-                  }}
-                >
-                  <AlertCircle className="w-5 h-5" />
-                </div>
-              </div>
-              <div className="mt-3">
-                <div className="flex items-center gap-2">
-                  <span
-                    className="w-3 h-3 rounded-full flex-shrink-0"
-                    style={{ backgroundColor: getCategoryColor(summary?.topCategory.name || '') }}
-                  />
-                  <h3
-                    className="text-2xl font-bold truncate"
-                    style={{ color: getCategoryColor(summary?.topCategory.name || '') }}
-                  >
-                    {summary?.topCategory.name || '-'}
-                  </h3>
-                </div>
-                <p
-                  className={`text-xs mt-1 ${
-                    isLight ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                >
-                  Total:{' '}
-                  <span
-                    className={`font-semibold font-mono tabular-nums ${
-                      isLight ? 'text-slate-800' : 'text-slate-200'
-                    }`}
-                  >
-                    {formatBRL(summary?.topCategory.amount || 0)}
-                  </span>
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Resumo Acumulado do Ano */}
+        {/* Resumo Anual Acumulado (Oficial da Planilha) */}
         {sm && (
-          <div>
-            <h2
-              className={`text-sm font-semibold uppercase tracking-wider mb-3 flex items-center gap-2 ${
-                isLight ? 'text-slate-600' : 'text-slate-400'
-              }`}
-            >
-              <CalendarRange className="w-4 h-4 text-indigo-500" />
-              Visão Acumulada do Ano (Planilha)
-            </h2>
+          <div
+            className={`rounded-2xl p-5 border transition ${
+              isLight
+                ? 'bg-white border-slate-200 shadow-sm'
+                : 'bg-slate-900/40 backdrop-blur border-slate-800/80'
+            }`}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-indigo-400">
+                <CalendarRange className="w-4 h-4" />
+                Métricas Consolidadas no Ano
+              </h2>
+              <span className="text-[11px] text-slate-500">Base oficial da aba Painel Resumo</span>
+            </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div
-                className={`rounded-xl p-4 border transition ${
-                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/40 border-slate-800/80'
-                }`}
-              >
-                <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Saídas no Ano</span>
-                <p className={`text-lg font-bold mt-1 font-mono tabular-nums ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+                <span className="text-xs text-slate-400">Saídas Acumuladas</span>
+                <p className="text-lg font-black tracking-tight mt-1 text-rose-400 tabular-nums font-mono">
                   {formatBRL(sm.yearExpenses)}
                 </p>
               </div>
 
-              <div
-                className={`rounded-xl p-4 border transition ${
-                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/40 border-slate-800/80'
-                }`}
-              >
-                <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Saldo do Ano</span>
-                <p className={`text-lg font-bold mt-1 font-mono tabular-nums ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
+              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+                <span className="text-xs text-slate-400">Saldo no Ano</span>
+                <p className="text-lg font-black tracking-tight mt-1 text-indigo-400 tabular-nums font-mono">
                   {formatBRL(sm.yearBalance)}
                 </p>
               </div>
 
-              <div
-                className={`rounded-xl p-4 border transition ${
-                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/40 border-slate-800/80'
-                }`}
-              >
-                <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Média de Saídas / Mês</span>
-                <p className={`text-lg font-bold mt-1 font-mono tabular-nums ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+                <span className="text-xs text-slate-400">Média Mensal de Gastos</span>
+                <p className="text-lg font-black tracking-tight mt-1 text-slate-200 tabular-nums font-mono">
                   {formatBRL(sm.yearAvgMonthlyExpense)}
                 </p>
               </div>
 
-              <div
-                className={`rounded-xl p-4 border transition ${
-                  isLight ? 'bg-white border-slate-200 shadow-sm' : 'bg-slate-900/40 border-slate-800/80'
-                }`}
-              >
-                <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Taxa de Poupança no Ano</span>
-                <p className={`text-lg font-bold mt-1 ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+                <span className="text-xs text-slate-400">Poupança Média Anual</span>
+                <p className="text-lg font-black tracking-tight mt-1 text-emerald-400 tabular-nums">
                   {sm.yearSavingsRate}
                 </p>
               </div>
@@ -857,90 +757,65 @@ export default function Dashboard() {
           </div>
         )}
 
-        {/* Gráficos */}
+        {/* Gráficos em Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Gráfico Donut de Despesas por Categoria */}
+          {/* Gráfico Donut com Informação Central */}
           <div
             className={`rounded-2xl p-6 border shadow-sm transition ${
               isLight
-                ? 'bg-white border-slate-200 shadow-slate-200/50'
+                ? 'bg-white border-slate-200'
                 : 'bg-slate-900/60 backdrop-blur border-slate-800/80'
             }`}
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className={`text-lg font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  Despesas por Categoria
-                </h2>
-                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Distribuição percentual dos gastos no período
-                </p>
+                <h2 className="text-base font-bold">Despesas por Categoria</h2>
+                <p className="text-xs text-slate-400">Distribuição proporcional dos gastos</p>
               </div>
-              <Layers className="w-5 h-5 text-indigo-500" />
+              <Layers className="w-5 h-5 text-indigo-400" />
             </div>
 
-            {/* Gráfico com Legendas na Esquerda e Donut maior na Direita */}
             {expenseByCategory.length === 0 ? (
-              <div className="h-72 flex items-center justify-center text-sm text-slate-400">
-                Sem despesas registradas neste período
+              <div className="h-72 flex items-center justify-center text-sm text-slate-500">
+                Nenhuma despesa para exibir neste período.
               </div>
             ) : (
               <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
-                {/* Legendas na Esquerda */}
-                <div className="w-full sm:w-1/2 flex flex-col gap-2.5 max-h-72 overflow-y-auto pr-2 scrollbar-thin">
-                  {(() => {
-                    const totalVal = expenseByCategory.reduce((sum, item) => sum + item.value, 0);
-                    return expenseByCategory.map((cat, idx) => {
-                      const color = getCategoryColor(cat.name, idx);
-                      const percent = totalVal > 0 ? ((cat.value / totalVal) * 100).toFixed(1) : '0';
-                      return (
-                        <div
-                          key={cat.name}
-                          className={`flex items-center justify-between p-2.5 rounded-xl border transition-all ${
-                            isLight
-                              ? 'bg-slate-50 hover:bg-slate-100/80 border-slate-200'
-                              : 'bg-slate-950/40 hover:bg-slate-800/60 border-slate-800/80'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <span
-                              className="w-3.5 h-3.5 rounded-full flex-shrink-0 shadow-sm"
-                              style={{ backgroundColor: color }}
-                            />
-                            <span
-                              className={`text-sm font-medium truncate ${
-                                isLight ? 'text-slate-800' : 'text-slate-200'
-                              }`}
-                              title={cat.name}
-                            >
-                              {cat.name}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                            <span
-                              className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
-                                isLight
-                                  ? 'bg-white text-slate-700 border border-slate-200'
-                                  : 'bg-slate-900 text-slate-300 border border-slate-700/60'
-                              }`}
-                            >
-                              {percent}%
-                            </span>
-                            <span
-                              className="text-xs font-semibold font-mono tabular-nums"
-                              style={{ color }}
-                            >
-                              {formatBRL(cat.value)}
-                            </span>
-                          </div>
+                {/* Legendas com porcentagem */}
+                <div className="w-full sm:w-1/2 flex flex-col gap-2 max-h-72 overflow-y-auto pr-1">
+                  {expenseByCategory.map((cat, idx) => {
+                    const color = getCategoryColor(cat.name, idx);
+                    const percent = totalExpenseVal > 0 ? ((cat.value / totalExpenseVal) * 100).toFixed(1) : '0';
+                    return (
+                      <div
+                        key={cat.name}
+                        className={`flex items-center justify-between p-2 rounded-xl border transition-all ${
+                          isLight
+                            ? 'bg-slate-50/80 border-slate-200 hover:bg-slate-100'
+                            : 'bg-slate-950/40 border-slate-800/80 hover:bg-slate-800/40'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: color }} />
+                          <span className="text-xs font-medium truncate">{cat.name}</span>
                         </div>
-                      );
-                    });
-                  })()}
+                        <div className="flex items-center gap-2 font-mono text-xs">
+                          <span className="text-slate-400 text-[11px]">{percent}%</span>
+                          <span className="font-semibold">{formatBRL(cat.value)}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* #4 — Donut Chart com Label Central */}
-                <div className="w-full sm:w-1/2 h-72 flex items-center justify-center">
+                {/* Donut Chart com Centro Informativo */}
+                <div className="w-full sm:w-1/2 h-72 relative flex items-center justify-center">
+                  <div className="absolute flex flex-col items-center justify-center pointer-events-none z-10">
+                    <span className="text-[10px] uppercase font-bold text-slate-400">Total Gasto</span>
+                    <span className="text-sm font-black font-mono tracking-tight text-slate-200">
+                      {formatBRL(totalExpenseVal)}
+                    </span>
+                  </div>
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
                       <Pie
@@ -948,8 +823,8 @@ export default function Dashboard() {
                         cx="50%"
                         cy="50%"
                         innerRadius={65}
-                        outerRadius={105}
-                        paddingAngle={4}
+                        outerRadius={100}
+                        paddingAngle={3}
                         dataKey="value"
                       >
                         {expenseByCategory.map((entry, index) => (
@@ -962,22 +837,15 @@ export default function Dashboard() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: number | string | undefined) => [formatBRL(Number(value ?? 0)), 'Valor']}
+                        formatter={(value: any) => [formatBRL(Number(value)), 'Valor']}
                         contentStyle={{
                           backgroundColor: isLight ? '#ffffff' : '#0f172a',
                           borderColor: isLight ? '#e2e8f0' : '#334155',
-                          borderRadius: '8px',
+                          borderRadius: '12px',
                           color: isLight ? '#0f172a' : '#fff',
-                          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                          boxShadow: '0 8px 16px -2px rgb(0 0 0 / 0.3)',
                         }}
                       />
-                      {/* #4 — Label central do donut */}
-                      <text x="50%" y="43%" textAnchor="middle" dominantBaseline="central" fill="#94a3b8" fontSize={11}>
-                        Total Saídas
-                      </text>
-                      <text x="50%" y="57%" textAnchor="middle" dominantBaseline="central" fill={isLight ? '#1e293b' : '#f1f5f9'} fontSize={13} fontWeight="bold">
-                        {formatBRL(expenseByCategory.reduce((s, c) => s + c.value, 0))}
-                      </text>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -985,108 +853,102 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Gráfico de Barras por Data */}
+          {/* Gráfico de Barras com Visual Moderno */}
           <div
             className={`rounded-2xl p-6 border shadow-sm transition ${
               isLight
-                ? 'bg-white border-slate-200 shadow-slate-200/50'
+                ? 'bg-white border-slate-200'
                 : 'bg-slate-900/60 backdrop-blur border-slate-800/80'
             }`}
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className={`text-lg font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                  Fluxo de Entradas vs Saídas
-                </h2>
-                <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                  Movimentações por data registrada
-                </p>
+                <h2 className="text-base font-bold">Fluxo Diário</h2>
+                <p className="text-xs text-slate-400">Entradas vs Saídas registradas por dia</p>
               </div>
-              <PiggyBank className="w-5 h-5 text-emerald-500" />
+              <PiggyBank className="w-5 h-5 text-emerald-400" />
             </div>
 
-            <div className="h-64 w-full">
-              {timelineData.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-sm text-slate-400">
-                  Nenhum lançamento no período
-                </div>
-              ) : (
+            {timelineData.length === 0 ? (
+              <div className="h-72 flex items-center justify-center text-sm text-slate-500">
+                Sem histórico cronológico no mês.
+              </div>
+            ) : (
+              <div className="h-72">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={timelineData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                    <CartesianGrid
-                      strokeDasharray="3 3"
-                      stroke={isLight ? '#e2e8f0' : '#1e293b'}
-                      vertical={false}
-                    />
+                  <BarChart data={timelineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke={isLight ? '#f1f5f9' : '#1e293b'} vertical={false} />
                     <XAxis
                       dataKey="date"
                       stroke={isLight ? '#94a3b8' : '#64748b'}
-                      tick={{ fill: isLight ? '#64748b' : '#94a3b8', fontSize: 12 }}
+                      fontSize={11}
+                      tickLine={false}
                     />
                     <YAxis
                       stroke={isLight ? '#94a3b8' : '#64748b'}
-                      tick={{ fill: isLight ? '#64748b' : '#94a3b8', fontSize: 11 }}
-                      tickFormatter={(val) => `R$${val}`}
+                      fontSize={11}
+                      tickLine={false}
+                      tickFormatter={(v) => `R$${v}`}
                     />
                     <Tooltip
-                      formatter={(value: number | string | undefined) => [formatBRL(Number(value ?? 0)), '']}
+                      formatter={(value: any) => [formatBRL(Number(value)), 'Valor']}
                       contentStyle={{
                         backgroundColor: isLight ? '#ffffff' : '#0f172a',
                         borderColor: isLight ? '#e2e8f0' : '#334155',
-                        borderRadius: '8px',
+                        borderRadius: '12px',
                         color: isLight ? '#0f172a' : '#fff',
-                        boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
+                        boxShadow: '0 8px 16px -2px rgb(0 0 0 / 0.3)',
                       }}
                     />
                     <Legend />
-                    <Bar dataKey="Entrada" fill="#10B981" radius={[4, 4, 0, 0]} name="Entradas" />
-                    <Bar dataKey="Saída" fill="#F43F5E" radius={[4, 4, 0, 0]} name="Saídas" />
+                    <Bar dataKey="Entrada" fill="#10B981" radius={[4, 4, 0, 0]} maxBarSize={32} />
+                    <Bar dataKey="Saída" fill="#F43F5E" radius={[4, 4, 0, 0]} maxBarSize={32} />
                   </BarChart>
                 </ResponsiveContainer>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Tabela de Lançamentos */}
+        {/* Tabela de Lançamentos com Exportação e Filtros Completos */}
         <div
           className={`rounded-2xl overflow-hidden border shadow-sm transition ${
             isLight
-              ? 'bg-white border-slate-200 shadow-slate-200/50'
+              ? 'bg-white border-slate-200'
               : 'bg-slate-900/60 backdrop-blur border-slate-800/80'
           }`}
         >
+          {/* Header da Tabela com Botão de Exportação */}
           <div
             className={`p-5 border-b flex flex-col md:flex-row gap-4 items-start md:items-center justify-between ${
               isLight ? 'border-slate-200 bg-slate-50/50' : 'border-slate-800/80 bg-slate-950/20'
             }`}
           >
             <div>
-              <h2 className={`text-lg font-semibold ${isLight ? 'text-slate-900' : 'text-white'}`}>
-                Lançamentos Detalhados
-              </h2>
-              <p className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                Histórico de transações para {formatMonthLabel(selectedMonth)} ({filteredTransactions.length} lançamentos)
+              <div className="flex items-center gap-2">
+                <h2 className="text-base font-bold">Lançamentos Detalhados</h2>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700 font-mono">
+                  {filteredTransactions.length}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5">
+                Histórico completo com filtros por categoria, status e texto
               </p>
             </div>
 
-            {/* Controles de Filtro e Busca */}
-            <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-              <div className="relative flex-1 sm:w-64">
-                <Search
-                  className={`w-4 h-4 absolute left-3 top-3 ${
-                    isLight ? 'text-slate-400' : 'text-slate-400'
-                  }`}
-                />
+            {/* Controles de Filtro e Botão de Download CSV */}
+            <div className="flex flex-wrap items-center gap-2.5 w-full md:w-auto">
+              <div className="relative flex-1 sm:w-56">
+                <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Buscar lançamento..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  className={`w-full rounded-lg pl-9 pr-4 py-1.5 text-sm transition focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${
+                  className={`w-full rounded-xl pl-8 pr-3 py-1.5 text-xs transition focus:outline-none focus:ring-2 focus:ring-indigo-500 border ${
                     isLight
-                      ? 'bg-white border-slate-300 text-slate-800 placeholder-slate-400 focus:border-indigo-500'
-                      : 'bg-slate-950 border-slate-700/80 text-slate-200 placeholder-slate-500 focus:border-indigo-500'
+                      ? 'bg-white border-slate-300 text-slate-800 placeholder-slate-400'
+                      : 'bg-slate-950 border-slate-700/80 text-slate-200 placeholder-slate-500'
                   }`}
                 />
               </div>
@@ -1096,22 +958,17 @@ export default function Dashboard() {
                 <select
                   value={filterType}
                   onChange={(e) => setFilterType(e.target.value as 'ALL' | 'Entrada' | 'Saída')}
-                  className={`appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`appearance-none pl-3 pr-7 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isLight
                       ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
                       : 'bg-slate-950 border-slate-700/80 text-slate-200 hover:bg-slate-900'
                   }`}
-                  title="Filtrar por tipo"
                 >
+                  <option value="ALL">Tipo: Todos</option>
                   <option value="Entrada">🟢 Entradas</option>
                   <option value="Saída">🔴 Saídas</option>
-                  <option value="ALL">⚪ Todos os tipos</option>
                 </select>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${
-                    isLight ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                />
+                <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
               </div>
 
               {/* Filtro Status */}
@@ -1119,22 +976,17 @@ export default function Dashboard() {
                 <select
                   value={filterStatus}
                   onChange={(e) => setFilterStatus(e.target.value as 'ALL' | 'Realizado' | 'Previsto')}
-                  className={`appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`appearance-none pl-3 pr-7 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isLight
                       ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
                       : 'bg-slate-950 border-slate-700/80 text-slate-200 hover:bg-slate-900'
                   }`}
-                  title="Filtrar por status de pagamento"
                 >
                   <option value="ALL">Status: Todos</option>
                   <option value="Realizado">✓ Pago / Recebido</option>
                   <option value="Previsto">⏳ Pendente</option>
                 </select>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${
-                    isLight ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                />
+                <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
               </div>
 
               {/* Filtro Categoria */}
@@ -1142,119 +994,102 @@ export default function Dashboard() {
                 <select
                   value={selectedCategory}
                   onChange={(e) => setSelectedCategory(e.target.value)}
-                  className={`appearance-none pl-3 pr-8 py-1.5 rounded-lg text-xs font-medium border cursor-pointer transition shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
+                  className={`appearance-none pl-3 pr-7 py-1.5 rounded-xl text-xs font-semibold border cursor-pointer transition focus:outline-none focus:ring-2 focus:ring-indigo-500 ${
                     isLight
                       ? 'bg-white border-slate-300 text-slate-800 hover:bg-slate-50'
                       : 'bg-slate-950 border-slate-700/80 text-slate-200 hover:bg-slate-900'
                   }`}
                 >
-                  <option value="ALL">Todas as categorias</option>
+                  <option value="ALL">Categoria: Todas</option>
                   {categories.map((c) => (
                     <option key={c} value={c}>
                       {c}
                     </option>
                   ))}
                 </select>
-                <ChevronDown
-                  className={`w-3.5 h-3.5 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none ${
-                    isLight ? 'text-slate-500' : 'text-slate-400'
-                  }`}
-                />
+                <ChevronDown className="w-3 h-3 absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none opacity-60" />
               </div>
+
+              {/* Botão Exportar CSV */}
+              <button
+                onClick={exportCSV}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition active:scale-95 shadow-sm ${
+                  isLight
+                    ? 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                    : 'bg-slate-950 border-slate-700/80 text-slate-300 hover:bg-slate-900'
+                }`}
+                title="Exportar lançamentos filtrados em CSV"
+              >
+                <Download className="w-3.5 h-3.5 text-indigo-400" />
+                <span className="hidden sm:inline">Exportar CSV</span>
+              </button>
             </div>
           </div>
 
+          {/* Tabela Responsiva com Tabular Nums */}
           <div className="overflow-x-auto">
             <table className={`w-full text-left text-sm ${isLight ? 'text-slate-700' : 'text-slate-300'}`}>
               <thead
-                className={`uppercase text-xs border-b ${
+                className={`uppercase text-[11px] tracking-wider border-b ${
                   isLight
-                    ? 'bg-slate-100/70 text-slate-600 border-slate-200'
-                    : 'bg-slate-950/50 text-slate-400 border-slate-800'
+                    ? 'bg-slate-100/70 text-slate-500 border-slate-200'
+                    : 'bg-slate-950/60 text-slate-400 border-slate-800'
                 }`}
               >
                 <tr>
-                  <th className="px-6 py-3.5">Data</th>
-                  <th className="px-6 py-3.5">Descrição</th>
-                  <th className="px-6 py-3.5">Categoria</th>
-                  <th className="px-6 py-3.5">Tipo</th>
-                  <th className="px-6 py-3.5">Status</th>
-                  <th className="px-6 py-3.5 text-right">Valor</th>
+                  <th className="px-5 py-3.5 font-semibold">Data</th>
+                  <th className="px-5 py-3.5 font-semibold">Descrição</th>
+                  <th className="px-5 py-3.5 font-semibold">Categoria</th>
+                  <th className="px-5 py-3.5 font-semibold">Tipo</th>
+                  <th className="px-5 py-3.5 font-semibold">Status</th>
+                  <th className="px-5 py-3.5 text-right font-semibold">Valor</th>
                 </tr>
               </thead>
               <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-slate-800/60'}`}>
-                {/* #8 — Empty state elegante */}
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center">
-                      <div className="flex flex-col items-center gap-3">
-                        <FileSpreadsheet className={`w-12 h-12 opacity-20 ${isLight ? 'text-slate-600' : 'text-slate-400'}`} />
-                        <p className={`text-sm font-medium ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
-                          Nenhum lançamento encontrado
-                        </p>
-                        <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
-                          Tente ajustar os filtros ou selecionar outro mês
-                        </p>
-                      </div>
+                    <td colSpan={6} className="px-5 py-10 text-center text-slate-500 text-sm">
+                      Nenhum lançamento encontrado para os filtros selecionados.
                     </td>
                   </tr>
                 ) : (
-                  /* #5 + #6 — Striped rows + Hover melhorado */
-                  filteredTransactions.map((tx, rowIdx) => {
+                  filteredTransactions.map((tx) => {
                     const isPaid = tx.status?.trim().toLowerCase() === 'realizado';
+                    const catColor = getCategoryColor(tx.category);
+
                     return (
                       <tr
                         key={tx.id}
-                        className={`transition cursor-pointer ${
+                        className={`transition ${
                           isLight
-                            ? isPaid
-                              ? `hover:bg-indigo-50/50 ${rowIdx % 2 === 1 ? 'bg-slate-50/60' : ''}`
-                              : `bg-amber-500/[0.02] hover:bg-indigo-50/50 ${rowIdx % 2 === 1 ? 'bg-slate-50/60' : ''}`
-                            : isPaid
-                            ? `hover:bg-indigo-500/5 ${rowIdx % 2 === 1 ? 'bg-slate-950/30' : ''}`
-                            : `bg-amber-500/[0.02] hover:bg-indigo-500/5 ${rowIdx % 2 === 1 ? 'bg-slate-950/30' : ''}`
+                            ? 'hover:bg-slate-50/80'
+                            : 'hover:bg-slate-800/40'
                         }`}
                       >
-                        <td
-                          className={`px-6 py-4 whitespace-nowrap font-mono text-xs ${
-                            isLight ? 'text-slate-500' : 'text-slate-400'
-                          }`}
-                        >
+                        <td className="px-5 py-3.5 whitespace-nowrap font-mono text-xs text-slate-400">
                           {tx.date}
                         </td>
-                        <td className={`px-6 py-4 font-medium ${isLight ? 'text-slate-900' : 'text-white'}`}>
+                        <td className={`px-5 py-3.5 font-medium ${isLight ? 'text-slate-900' : 'text-slate-100'}`}>
                           {tx.description}
                         </td>
-                        <td className="px-6 py-4">
-                          {(() => {
-                            const catColor = getCategoryColor(tx.category);
-                            return (
-                              <span
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border"
-                                style={{
-                                  backgroundColor: isLight ? `${catColor}15` : `${catColor}20`,
-                                  color: catColor,
-                                  borderColor: `${catColor}40`,
-                                }}
-                              >
-                                <span
-                                  className="w-1.5 h-1.5 rounded-full"
-                                  style={{ backgroundColor: catColor }}
-                                />
-                                {tx.category}
-                              </span>
-                            );
-                          })()}
-                        </td>
-                        <td className="px-6 py-4">
+                        <td className="px-5 py-3.5">
                           <span
-                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border"
+                            style={{
+                              backgroundColor: isLight ? `${catColor}15` : `${catColor}20`,
+                              color: catColor,
+                              borderColor: `${catColor}35`,
+                            }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: catColor }} />
+                            {tx.category}
+                          </span>
+                        </td>
+                        <td className="px-5 py-3.5">
+                          <span
+                            className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
                               tx.type === 'Entrada'
-                                ? isLight
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
-                                : isLight
-                                ? 'bg-rose-50 text-rose-700 border-rose-200'
+                                ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
                                 : 'bg-rose-500/10 text-rose-400 border-rose-500/20'
                             }`}
                           >
@@ -1266,37 +1101,21 @@ export default function Dashboard() {
                             {tx.type}
                           </span>
                         </td>
-                        {/* Coluna Status */}
-                        <td className="px-6 py-4">
+                        <td className="px-5 py-3.5">
                           {isPaid ? (
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                                isLight
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30'
-                              }`}
-                              title="Confirmado como Realizado na planilha"
-                            >
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                               {tx.type === 'Entrada' ? 'Recebido' : 'Pago'}
                             </span>
                           ) : (
-                            <span
-                              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium border ${
-                                isLight
-                                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                  : 'bg-amber-500/10 text-amber-400 border-amber-500/30'
-                              }`}
-                              title="Previsto na planilha (Ainda não liquidado)"
-                            >
-                              <Clock className="w-3.5 h-3.5 text-amber-500" />
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                              <Clock className="w-3 h-3 text-amber-400" />
                               Pendente
                             </span>
                           )}
                         </td>
-                        {/* #3 — tabular-nums no valor da tabela */}
                         <td
-                          className={`px-6 py-4 text-right font-semibold whitespace-nowrap font-mono tabular-nums ${
+                          className={`px-5 py-3.5 text-right font-black whitespace-nowrap font-mono tabular-nums ${
                             tx.type === 'Entrada'
                               ? isLight
                                 ? 'text-emerald-600'
