@@ -174,6 +174,57 @@ function formatMonthLabel(monthKey: string) {
   return year ? `${translated} / ${year}` : translated;
 }
 
+// ─── Skeleton Loading ────────────────────────────────────────────────────────
+function SkeletonCard({ isLight }: { isLight: boolean }) {
+  return (
+    <div
+      className={`rounded-2xl p-5 border shadow-sm animate-pulse ${
+        isLight
+          ? 'bg-white border-slate-200'
+          : 'bg-slate-900/60 border-slate-800/80'
+      }`}
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className={`h-3 w-28 rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+        <div className={`h-8 w-8 rounded-lg ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+      </div>
+      <div className={`h-7 w-36 rounded-md mb-3 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+      <div className={`h-1.5 w-full rounded-full mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+      <div className="flex justify-between">
+        <div className={`h-3 w-20 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+        <div className={`h-3 w-20 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+      </div>
+    </div>
+  );
+}
+
+function SkeletonTable({ isLight }: { isLight: boolean }) {
+  return (
+    <div
+      className={`rounded-2xl overflow-hidden border shadow-sm animate-pulse ${
+        isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-slate-800/80'
+      }`}
+    >
+      <div className={`p-5 border-b ${isLight ? 'border-slate-200 bg-slate-50/50' : 'border-slate-800/80 bg-slate-950/20'}`}>
+        <div className={`h-5 w-48 rounded-md mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+        <div className={`h-3 w-64 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+      </div>
+      <div className="divide-y divide-slate-800/40">
+        {[...Array(6)].map((_, i) => (
+          <div key={i} className="flex items-center gap-4 px-6 py-4">
+            <div className={`h-3 w-16 rounded-full flex-shrink-0 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+            <div className={`h-3 flex-1 rounded-full ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+            <div className={`h-5 w-20 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+            <div className={`h-5 w-16 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+            <div className={`h-5 w-16 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+            <div className={`h-3 w-24 rounded-full ml-auto ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Dashboard() {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [loading, setLoading] = useState(true);
@@ -186,6 +237,8 @@ export default function Dashboard() {
   const [filterType, setFilterType] = useState<'ALL' | 'Entrada' | 'Saída'>('ALL');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'Realizado' | 'Previsto'>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  // #9 — Timestamp da última atualização
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   // Inicializar tema com base na preferência salva no localStorage ou preferência do sistema
   useEffect(() => {
@@ -213,6 +266,8 @@ export default function Dashboard() {
         setSummary(data.summary);
         setTransactions(data.transactions);
         setExpenseByCategory(data.expenseByCategory);
+        // #9 — Marcar timestamp de sucesso
+        setLastUpdated(new Date());
       }
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
@@ -280,17 +335,61 @@ export default function Dashboard() {
 
   const isLight = theme === 'light';
 
+  // #1 — Skeleton Loading (substituindo o spinner)
   if (loading) {
     return (
       <div
-        className={`min-h-screen flex flex-col items-center justify-center transition-colors duration-200 ${
-          isLight ? 'bg-slate-50 text-slate-800' : 'bg-slate-950 text-white'
+        className={`min-h-screen transition-colors duration-200 p-4 sm:p-6 lg:p-8 ${
+          isLight ? 'bg-slate-50 text-slate-900' : 'bg-slate-950 text-slate-100'
         }`}
       >
-        <RefreshCw className="w-10 h-10 animate-spin text-indigo-500 mb-4" />
-        <p className={`font-medium ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-          Carregando dados da sua planilha do Google...
-        </p>
+        {/* Header skeleton */}
+        <div
+          className={`max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between pb-6 border-b gap-4 mb-6 animate-pulse ${
+            isLight ? 'border-slate-200' : 'border-slate-800'
+          }`}
+        >
+          <div className="flex items-center gap-3">
+            <div className={`w-12 h-12 rounded-xl ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+            <div>
+              <div className={`h-7 w-48 rounded-md mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+              <div className={`h-3 w-64 rounded-full ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className={`h-9 w-32 rounded-lg ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+            <div className={`h-9 w-24 rounded-lg ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+            <div className={`h-9 w-28 rounded-lg bg-indigo-500/30`} />
+          </div>
+        </div>
+
+        {/* KPI skeleton cards */}
+        <div className="max-w-7xl mx-auto space-y-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[...Array(4)].map((_, i) => (
+              <SkeletonCard key={i} isLight={isLight} />
+            ))}
+          </div>
+
+          {/* Charts skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {[0, 1].map((i) => (
+              <div
+                key={i}
+                className={`rounded-2xl p-6 border shadow-sm animate-pulse ${
+                  isLight ? 'bg-white border-slate-200' : 'bg-slate-900/60 border-slate-800/80'
+                }`}
+              >
+                <div className={`h-5 w-40 rounded-md mb-2 ${isLight ? 'bg-slate-200' : 'bg-slate-700'}`} />
+                <div className={`h-3 w-56 rounded-full mb-6 ${isLight ? 'bg-slate-100' : 'bg-slate-800'}`} />
+                <div className={`h-64 w-full rounded-xl ${isLight ? 'bg-slate-100' : 'bg-slate-800/60'}`} />
+              </div>
+            ))}
+          </div>
+
+          {/* Table skeleton */}
+          <SkeletonTable isLight={isLight} />
+        </div>
       </div>
     );
   }
@@ -409,6 +508,13 @@ export default function Dashboard() {
             Abrir Planilha
           </a>
 
+          {/* #9 — Timestamp da última atualização */}
+          {lastUpdated && (
+            <span className="text-xs text-slate-500">
+              Atualizado às {lastUpdated.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </span>
+          )}
+
           {/* Botão Atualizar */}
           <button
             onClick={() => fetchData()}
@@ -444,12 +550,12 @@ export default function Dashboard() {
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Total de Entradas com Barra de Progresso de Recebido */}
+            {/* #2 + #3 + #7 — Total de Entradas */}
             <div
-              className={`rounded-2xl p-5 border shadow-sm transition ${
+              className={`rounded-2xl p-5 border-l-4 border-emerald-500 shadow-sm transition ${
                 isLight
-                  ? 'bg-white border-slate-200 hover:border-emerald-500/50 shadow-slate-200/50'
-                  : 'bg-slate-900/60 backdrop-blur border-slate-800/80 hover:border-emerald-500/40'
+                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-emerald-500/50 shadow-slate-200/50'
+                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-emerald-500/40'
               }`}
             >
               <div
@@ -468,8 +574,9 @@ export default function Dashboard() {
               </div>
               <div className="mt-3">
                 <div className="flex items-baseline justify-between gap-2">
+                  {/* #3 — tabular-nums */}
                   <h3
-                    className={`text-2xl font-bold truncate ${
+                    className={`text-2xl font-bold font-mono tabular-nums truncate ${
                       isLight ? 'text-emerald-600' : 'text-emerald-400'
                     }`}
                   >
@@ -503,23 +610,23 @@ export default function Dashboard() {
                   <span className={`flex items-center gap-1 truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                     <span>Rec:</span>
-                    <strong className="text-emerald-500 truncate">{formatBRL(summary?.paidIncome ?? 0)}</strong>
+                    <strong className="text-emerald-500 truncate font-mono tabular-nums">{formatBRL(summary?.paidIncome ?? 0)}</strong>
                   </span>
                   <span className={`flex items-center gap-1 truncate justify-end ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
                     <span>Pend:</span>
-                    <strong className="text-amber-500 truncate">{formatBRL(summary?.pendingIncome ?? 0)}</strong>
+                    <strong className="text-amber-500 truncate font-mono tabular-nums">{formatBRL(summary?.pendingIncome ?? 0)}</strong>
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Saídas do Mês com Barra de Progresso de Pago */}
+            {/* #2 + #3 + #7 — Saídas do Mês */}
             <div
-              className={`rounded-2xl p-5 border shadow-sm transition ${
+              className={`rounded-2xl p-5 border-l-4 border-rose-500 shadow-sm transition ${
                 isLight
-                  ? 'bg-white border-slate-200 hover:border-rose-500/50 shadow-slate-200/50'
-                  : 'bg-slate-900/60 backdrop-blur border-slate-800/80 hover:border-rose-500/40'
+                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-rose-500/50 shadow-slate-200/50'
+                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-rose-500/40'
               }`}
             >
               <div
@@ -538,8 +645,9 @@ export default function Dashboard() {
               </div>
               <div className="mt-3">
                 <div className="flex items-baseline justify-between gap-2">
+                  {/* #3 — tabular-nums */}
                   <h3
-                    className={`text-2xl font-bold truncate ${
+                    className={`text-2xl font-bold font-mono tabular-nums truncate ${
                       isLight ? 'text-rose-600' : 'text-rose-400'
                     }`}
                   >
@@ -573,23 +681,23 @@ export default function Dashboard() {
                   <span className={`flex items-center gap-1 truncate ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
                     <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
                     <span>Pago:</span>
-                    <strong className="text-emerald-500 truncate">{formatBRL(summary?.paidExpense ?? 0)}</strong>
+                    <strong className="text-emerald-500 truncate font-mono tabular-nums">{formatBRL(summary?.paidExpense ?? 0)}</strong>
                   </span>
                   <span className={`flex items-center gap-1 truncate justify-end ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
                     <Clock className="w-3 h-3 text-amber-500 flex-shrink-0" />
                     <span>Pend:</span>
-                    <strong className="text-amber-500 truncate">{formatBRL(summary?.pendingExpense ?? 0)}</strong>
+                    <strong className="text-amber-500 truncate font-mono tabular-nums">{formatBRL(summary?.pendingExpense ?? 0)}</strong>
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Saldo do Mês */}
+            {/* #2 + #3 + #7 — Saldo do Mês */}
             <div
-              className={`rounded-2xl p-5 border shadow-sm transition ${
+              className={`rounded-2xl p-5 border-l-4 border-indigo-500 shadow-sm transition ${
                 isLight
-                  ? 'bg-white border-slate-200 hover:border-indigo-500/50 shadow-slate-200/50'
-                  : 'bg-slate-900/60 backdrop-blur border-slate-800/80 hover:border-indigo-500/40'
+                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-indigo-500/50 shadow-slate-200/50'
+                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-indigo-500/40'
               }`}
             >
               <div
@@ -607,8 +715,9 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="mt-3">
+                {/* #3 — tabular-nums */}
                 <h3
-                  className={`text-2xl font-bold ${
+                  className={`text-2xl font-bold font-mono tabular-nums ${
                     isLight ? 'text-indigo-600' : 'text-indigo-400'
                   }`}
                 >
@@ -631,13 +740,14 @@ export default function Dashboard() {
               </div>
             </div>
 
-            {/* Maior Categoria de Saída */}
+            {/* #2 + #3 + #7 — Maior Categoria de Saída */}
             <div
-              className={`rounded-2xl p-5 border shadow-sm transition ${
+              className={`rounded-2xl p-5 border-l-4 shadow-sm transition ${
                 isLight
-                  ? 'bg-white border-slate-200 hover:border-slate-300 shadow-slate-200/50'
-                  : 'bg-slate-900/60 backdrop-blur border-slate-800/80 hover:border-slate-700'
+                  ? 'bg-gradient-to-br from-white to-slate-50/80 border border-slate-200 hover:border-slate-300 shadow-slate-200/50'
+                  : 'bg-gradient-to-br from-slate-900 to-slate-800/40 border border-slate-800/80 hover:border-slate-700'
               }`}
+              style={{ borderLeftColor: getCategoryColor(summary?.topCategory.name || '') }}
             >
               <div
                 className={`flex items-center justify-between ${
@@ -675,7 +785,7 @@ export default function Dashboard() {
                 >
                   Total:{' '}
                   <span
-                    className={`font-semibold ${
+                    className={`font-semibold font-mono tabular-nums ${
                       isLight ? 'text-slate-800' : 'text-slate-200'
                     }`}
                   >
@@ -706,7 +816,7 @@ export default function Dashboard() {
                 }`}
               >
                 <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Saídas no Ano</span>
-                <p className={`text-lg font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                <p className={`text-lg font-bold mt-1 font-mono tabular-nums ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                   {formatBRL(sm.yearExpenses)}
                 </p>
               </div>
@@ -717,7 +827,7 @@ export default function Dashboard() {
                 }`}
               >
                 <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Saldo do Ano</span>
-                <p className={`text-lg font-bold mt-1 ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                <p className={`text-lg font-bold mt-1 font-mono tabular-nums ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
                   {formatBRL(sm.yearBalance)}
                 </p>
               </div>
@@ -728,7 +838,7 @@ export default function Dashboard() {
                 }`}
               >
                 <span className={`text-xs ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>Média de Saídas / Mês</span>
-                <p className={`text-lg font-bold mt-1 ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
+                <p className={`text-lg font-bold mt-1 font-mono tabular-nums ${isLight ? 'text-slate-900' : 'text-slate-200'}`}>
                   {formatBRL(sm.yearAvgMonthlyExpense)}
                 </p>
               </div>
@@ -817,7 +927,7 @@ export default function Dashboard() {
                               {percent}%
                             </span>
                             <span
-                              className="text-xs font-semibold"
+                              className="text-xs font-semibold font-mono tabular-nums"
                               style={{ color }}
                             >
                               {formatBRL(cat.value)}
@@ -829,7 +939,7 @@ export default function Dashboard() {
                   })()}
                 </div>
 
-                {/* Donut Chart na Direita preenchendo melhor */}
+                {/* #4 — Donut Chart com Label Central */}
                 <div className="w-full sm:w-1/2 h-72 flex items-center justify-center">
                   <ResponsiveContainer width="100%" height="100%">
                     <PieChart>
@@ -852,7 +962,7 @@ export default function Dashboard() {
                         ))}
                       </Pie>
                       <Tooltip
-                        formatter={(value: any) => [formatBRL(Number(value)), 'Valor']}
+                        formatter={(value: number | string | undefined) => [formatBRL(Number(value ?? 0)), 'Valor']}
                         contentStyle={{
                           backgroundColor: isLight ? '#ffffff' : '#0f172a',
                           borderColor: isLight ? '#e2e8f0' : '#334155',
@@ -861,6 +971,13 @@ export default function Dashboard() {
                           boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)',
                         }}
                       />
+                      {/* #4 — Label central do donut */}
+                      <text x="50%" y="43%" textAnchor="middle" dominantBaseline="central" fill="#94a3b8" fontSize={11}>
+                        Total Saídas
+                      </text>
+                      <text x="50%" y="57%" textAnchor="middle" dominantBaseline="central" fill={isLight ? '#1e293b' : '#f1f5f9'} fontSize={13} fontWeight="bold">
+                        {formatBRL(expenseByCategory.reduce((s, c) => s + c.value, 0))}
+                      </text>
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
@@ -912,7 +1029,7 @@ export default function Dashboard() {
                       tickFormatter={(val) => `R$${val}`}
                     />
                     <Tooltip
-                      formatter={(value: any) => [formatBRL(Number(value)), '']}
+                      formatter={(value: number | string | undefined) => [formatBRL(Number(value ?? 0)), '']}
                       contentStyle={{
                         backgroundColor: isLight ? '#ffffff' : '#0f172a',
                         borderColor: isLight ? '#e2e8f0' : '#334155',
@@ -974,7 +1091,7 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Filtro Tipo (Menu Cascata / Select) com Entradas sempre primeiro */}
+              {/* Filtro Tipo */}
               <div className="relative">
                 <select
                   value={filterType}
@@ -997,7 +1114,7 @@ export default function Dashboard() {
                 />
               </div>
 
-              {/* Filtro Status (Pago vs Pendente) */}
+              {/* Filtro Status */}
               <div className="relative">
                 <select
                   value={filterStatus}
@@ -1066,29 +1183,36 @@ export default function Dashboard() {
                 </tr>
               </thead>
               <tbody className={`divide-y ${isLight ? 'divide-slate-200' : 'divide-slate-800/60'}`}>
+                {/* #8 — Empty state elegante */}
                 {filteredTransactions.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className={`px-6 py-8 text-center ${isLight ? 'text-slate-500' : 'text-slate-500'}`}
-                    >
-                      Nenhum lançamento encontrado para os filtros selecionados.
+                    <td colSpan={6} className="px-6 py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <FileSpreadsheet className={`w-12 h-12 opacity-20 ${isLight ? 'text-slate-600' : 'text-slate-400'}`} />
+                        <p className={`text-sm font-medium ${isLight ? 'text-slate-500' : 'text-slate-500'}`}>
+                          Nenhum lançamento encontrado
+                        </p>
+                        <p className={`text-xs ${isLight ? 'text-slate-400' : 'text-slate-600'}`}>
+                          Tente ajustar os filtros ou selecionar outro mês
+                        </p>
+                      </div>
                     </td>
                   </tr>
                 ) : (
-                  filteredTransactions.map((tx) => {
+                  /* #5 + #6 — Striped rows + Hover melhorado */
+                  filteredTransactions.map((tx, rowIdx) => {
                     const isPaid = tx.status?.trim().toLowerCase() === 'realizado';
                     return (
                       <tr
                         key={tx.id}
-                        className={`transition ${
+                        className={`transition cursor-pointer ${
                           isLight
                             ? isPaid
-                              ? 'hover:bg-slate-50/80'
-                              : 'bg-amber-500/[0.02] hover:bg-amber-500/[0.05]'
+                              ? `hover:bg-indigo-50/50 ${rowIdx % 2 === 1 ? 'bg-slate-50/60' : ''}`
+                              : `bg-amber-500/[0.02] hover:bg-indigo-50/50 ${rowIdx % 2 === 1 ? 'bg-slate-50/60' : ''}`
                             : isPaid
-                            ? 'hover:bg-slate-800/40'
-                            : 'bg-amber-500/[0.02] hover:bg-slate-800/50'
+                            ? `hover:bg-indigo-500/5 ${rowIdx % 2 === 1 ? 'bg-slate-950/30' : ''}`
+                            : `bg-amber-500/[0.02] hover:bg-indigo-500/5 ${rowIdx % 2 === 1 ? 'bg-slate-950/30' : ''}`
                         }`}
                       >
                         <td
@@ -1170,8 +1294,9 @@ export default function Dashboard() {
                             </span>
                           )}
                         </td>
+                        {/* #3 — tabular-nums no valor da tabela */}
                         <td
-                          className={`px-6 py-4 text-right font-semibold whitespace-nowrap ${
+                          className={`px-6 py-4 text-right font-semibold whitespace-nowrap font-mono tabular-nums ${
                             tx.type === 'Entrada'
                               ? isLight
                                 ? 'text-emerald-600'
