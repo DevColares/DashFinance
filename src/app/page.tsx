@@ -32,6 +32,10 @@ import {
   Filter,
   ShieldCheck,
   Target,
+  CreditCard,
+  Percent,
+  Receipt,
+  Activity,
 } from 'lucide-react';
 import {
   PieChart,
@@ -56,6 +60,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   'EmprÃ©stimos': '#F59E0B',
   Moto: '#3B82F6', // Azul Real
   'Gastos Pessoal': '#8B5CF6', // Roxo Violeta
+  'Gastos Diários': '#F43F5E', // Rose / Destaque Diário
+  'Gastos Diarios': '#F43F5E',
   'Alimentação': '#EA580C', // Laranja Queimado
   'Alimentacao': '#EA580C',
   Transporte: '#0284C7', // Azul Céu
@@ -298,6 +304,43 @@ export default function FinanceDashboard() {
     });
     return Object.values(map);
   }, [transactions]);
+
+  // Indicadores rápidos e relevantes do mês ativo
+  const monthInsights = useMemo(() => {
+    const expenseTxs = transactions.filter((t) => t.type === 'Saída');
+    const totalExp = summary?.totalExpense || 0;
+    const totalInc = summary?.totalIncome || 0;
+
+    // 1. Maior gasto único (transação individual de maior impacto)
+    let maxExpenseTx: Transaction | undefined = undefined;
+    for (const t of expenseTxs) {
+      if (!maxExpenseTx || t.amount > maxExpenseTx.amount) {
+        maxExpenseTx = t;
+      }
+    }
+
+    // 2. Média diária de gastos (com base nos dias com registro ou média simples)
+    const distinctExpenseDays = new Set(expenseTxs.map((t) => t.date)).size || 1;
+    const dailyAvg = totalExp > 0 ? totalExp / Math.max(1, distinctExpenseDays) : 0;
+
+    // 3. Taxa de comprometimento da renda (Saídas / Entradas)
+    const commitmentRate = totalInc > 0 ? (totalExp / totalInc) * 100 : 0;
+
+    // 4. Contagem e pendências
+    const pendingCount = expenseTxs.filter(
+      (t) => t.status?.trim().toLowerCase() !== 'realizado'
+    ).length;
+
+    return {
+      maxExpenseAmount: maxExpenseTx ? (maxExpenseTx as Transaction).amount : 0,
+      maxExpenseDesc: maxExpenseTx ? (maxExpenseTx as Transaction).description : 'Nenhum',
+      maxExpenseCat: maxExpenseTx ? (maxExpenseTx as Transaction).category : '-',
+      dailyAvg,
+      commitmentRate,
+      pendingCount,
+      totalCount: transactions.length,
+    };
+  }, [transactions, summary]);
 
   const formatBRL = (val: number) => {
     if (hideValues) return 'R$ ••••••';
@@ -653,40 +696,6 @@ export default function FinanceDashboard() {
             </div>
           </div>
 
-          {/* Card Saldo */}
-          <div
-            className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
-              isLight
-                ? 'bg-white border-slate-200 hover:border-indigo-500/50 shadow-slate-200/40'
-                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-indigo-500/40 shadow-black/20'
-            }`}
-          >
-            <div className="flex items-center justify-between">
-              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                Saldo Restante
-              </span>
-              <div
-                className={`p-2 rounded-xl ${
-                  isLight ? 'bg-indigo-50 text-indigo-600' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
-                }`}
-              >
-                <Wallet className="w-4 h-4" />
-              </div>
-            </div>
-
-            <div className="mt-3">
-              <h3 className={`text-2xl font-black tracking-tight tabular-nums ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
-                {formatBRL(summary?.balance ?? 0)}
-              </h3>
-              <div className="mt-2 flex items-center gap-2">
-                <span className="text-xs text-slate-400">Poupança:</span>
-                <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
-                  {summary?.savingsRate}%
-                </span>
-              </div>
-            </div>
-          </div>
-
           {/* Card Reserva de Emergência */}
           <div
             className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
@@ -738,56 +747,124 @@ export default function FinanceDashboard() {
               </div>
             </div>
           </div>
-        </div>
 
-        {/* Resumo Anual Acumulado (Oficial da Planilha) */}
-        {sm && (
+          {/* Card Saldo */}
           <div
-            className={`rounded-2xl p-5 border transition ${
+            className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
               isLight
-                ? 'bg-white border-slate-200 shadow-sm'
-                : 'bg-slate-900/40 backdrop-blur border-slate-800/80'
+                ? 'bg-white border-slate-200 hover:border-indigo-500/50 shadow-slate-200/40'
+                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-indigo-500/40 shadow-black/20'
             }`}
           >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-indigo-400">
-                <CalendarRange className="w-4 h-4" />
-                Métricas Consolidadas no Ano
-              </h2>
-              <span className="text-[11px] text-slate-500">Base oficial da aba Painel Resumo</span>
+            <div className="flex items-center justify-between">
+              <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
+                Saldo Restante
+              </span>
+              <div
+                className={`p-2 rounded-xl ${
+                  isLight ? 'bg-indigo-50 text-indigo-600' : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                }`}
+              >
+                <Wallet className="w-4 h-4" />
+              </div>
             </div>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
-                <span className="text-xs text-slate-400">Saídas Acumuladas</span>
-                <p className="text-lg font-black tracking-tight mt-1 text-rose-400 tabular-nums font-mono">
-                  {formatBRL(sm.yearExpenses)}
-                </p>
-              </div>
-
-              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
-                <span className="text-xs text-slate-400">Saldo no Ano</span>
-                <p className="text-lg font-black tracking-tight mt-1 text-indigo-400 tabular-nums font-mono">
-                  {formatBRL(sm.yearBalance)}
-                </p>
-              </div>
-
-              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
-                <span className="text-xs text-slate-400">Média Mensal de Gastos</span>
-                <p className="text-lg font-black tracking-tight mt-1 text-slate-200 tabular-nums font-mono">
-                  {formatBRL(sm.yearAvgMonthlyExpense)}
-                </p>
-              </div>
-
-              <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
-                <span className="text-xs text-slate-400">Poupança Média Anual</span>
-                <p className="text-lg font-black tracking-tight mt-1 text-emerald-400 tabular-nums">
-                  {sm.yearSavingsRate}
-                </p>
+            <div className="mt-3">
+              <h3 className={`text-2xl font-black tracking-tight tabular-nums ${isLight ? 'text-indigo-600' : 'text-indigo-400'}`}>
+                {formatBRL(summary?.balance ?? 0)}
+              </h3>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs text-slate-400">Poupança:</span>
+                <span className="text-xs font-bold px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  {summary?.savingsRate}%
+                </span>
               </div>
             </div>
           </div>
-        )}
+        </div>
+
+        {/* Indicadores Operacionais e Inteligência do Mês */}
+        <div
+          className={`rounded-2xl p-5 border transition ${
+            isLight
+              ? 'bg-white border-slate-200 shadow-sm'
+              : 'bg-slate-900/40 backdrop-blur border-slate-800/80'
+          }`}
+        >
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xs font-bold uppercase tracking-wider flex items-center gap-2 text-indigo-400">
+              <Activity className="w-4 h-4" />
+              Inteligência e Dinâmica do Mês
+            </h2>
+            <span className="text-[11px] text-slate-500">Métricas contextuais do período ativo</span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {/* 1. Maior Gasto Único */}
+            <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs">Maior Gasto Único</span>
+                <CreditCard className="w-3.5 h-3.5 text-rose-400" />
+              </div>
+              <p className="text-lg font-black tracking-tight mt-1 text-rose-400 tabular-nums font-mono">
+                {formatBRL(monthInsights.maxExpenseAmount)}
+              </p>
+              <p className="text-[10px] text-slate-400 truncate mt-0.5">
+                {monthInsights.maxExpenseDesc} ({monthInsights.maxExpenseCat})
+              </p>
+            </div>
+
+            {/* 2. Categoria Dominante */}
+            <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs">Categoria Dominante</span>
+                <PieIcon className="w-3.5 h-3.5 text-indigo-400" />
+              </div>
+              <p className="text-lg font-black tracking-tight mt-1 text-indigo-400 truncate">
+                {summary?.topCategory.name || 'Nenhuma'}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5 font-mono">
+                Total: <strong className="text-slate-300">{formatBRL(summary?.topCategory.amount || 0)}</strong>
+              </p>
+            </div>
+
+            {/* 3. Média Diária de Gastos */}
+            <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs">Média Diária de Gastos</span>
+                <Receipt className="w-3.5 h-3.5 text-amber-400" />
+              </div>
+              <p className="text-lg font-black tracking-tight mt-1 text-amber-400 tabular-nums font-mono">
+                {formatBRL(monthInsights.dailyAvg)}
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                Por dia de despesa lançada
+              </p>
+            </div>
+
+            {/* 4. Comprometimento da Renda */}
+            <div className={`p-3.5 rounded-xl border ${isLight ? 'bg-slate-50 border-slate-200' : 'bg-slate-950/40 border-slate-800'}`}>
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="text-xs">Comprometimento de Renda</span>
+                <Percent className="w-3.5 h-3.5 text-emerald-400" />
+              </div>
+              <p
+                className={`text-lg font-black tracking-tight mt-1 tabular-nums font-mono ${
+                  monthInsights.commitmentRate > 100
+                    ? 'text-rose-400'
+                    : monthInsights.commitmentRate > 75
+                    ? 'text-amber-400'
+                    : 'text-emerald-400'
+                }`}
+              >
+                {monthInsights.commitmentRate.toFixed(1)}%
+              </p>
+              <p className="text-[10px] text-slate-400 mt-0.5">
+                {monthInsights.pendingCount} pendência{monthInsights.pendingCount === 1 ? '' : 's'} a quitar
+              </p>
+            </div>
+          </div>
+        </div>
 
         {/* Gráficos em Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
