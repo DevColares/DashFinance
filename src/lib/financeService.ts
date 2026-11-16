@@ -2,8 +2,10 @@ const SHEET_ID = '1HXSVSwyey5_EhfmvFcDB9a7X9y1bcdaOgqLP2TDuNSQ';
 
 // gid=0: Painel Resumo (gviz/tq ok — users don't filter this tab)
 // gid=1: Lançamentos — use CSV export so active sheet filters are IGNORED and ALL rows are returned
+// gid=4: Reserva de Emergência
 const PAINEL_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:json&gid=0`;
 const LANCAMENTOS_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=1`;
+const RESERVA_CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=4`;
 
 /** Robust CSV parser that handles quoted fields containing commas or newlines */
 function parseCSV(text: string): string[][] {
@@ -42,6 +44,13 @@ export interface Transaction {
   month?: string;
 }
 
+export interface ReserveMetrics {
+  target: number;
+  current: number;
+  remaining: number;
+  progressPercent: number;
+}
+
 export interface Summary {
   totalIncome: number;
   totalExpense: number;
@@ -54,6 +63,7 @@ export interface Summary {
   paidExpensePercent: number;
   paidIncomePercent: number;
   topCategory: { name: string; amount: number };
+  reserve?: ReserveMetrics;
   period: string;
   selectedMonth: string;
   availableMonths: string[];
@@ -84,11 +94,11 @@ export interface FinanceData {
 
 function parseCurrencyString(val: any): number {
   if (typeof val === 'number') return val;
-  if (!val) return 0;
+  if (!val || val === '-') return 0;
   let str = String(val).replace('R$', '').trim();
-  if (str.includes(',') && str.includes('.')) {
-    str = str.replace(/,/g, '');
-  } else if (str.includes(',') && !str.includes('.')) {
+  if (str.includes('.') && str.includes(',')) {
+    str = str.replace(/\./g, '').replace(',', '.');
+  } else if (str.includes(',')) {
     str = str.replace(',', '.');
   }
   const n = parseFloat(str);
@@ -100,6 +110,7 @@ interface RawDataCache {
   sheetMetrics: Summary['sheetMetrics'];
   allTransactions: Transaction[];
   availableMonths: string[];
+  reserve: ReserveMetrics;
   fetchedAt: number;
 }
 
@@ -110,9 +121,10 @@ export async function fetchRawData(forceRefresh = false): Promise<RawDataCache> 
     return memoryCache;
   }
 
-  const [painelRes, lancamentosRes] = await Promise.all([
+  const [painelRes, lancamentosRes, reservaRes] = await Promise.all([
     fetch(PAINEL_URL, { cache: 'no-store' }),
     fetch(LANCAMENTOS_CSV_URL, { cache: 'no-store' }),
+    fetch(RESERVA_CSV_URL, { cache: 'no-store' }),
   ]);
 
   if (!painelRes.ok || !lancamentosRes.ok) {
@@ -174,6 +186,36 @@ export async function fetchRawData(forceRefresh = false): Promise<RawDataCache> 
     }
   });
 
+  // 3. Extrair dados da Reserva de Emergência
+  let reserve: ReserveMetrics = {
+    target: 5000,
+    current: 0,
+    remaining: 5000,
+    progressPercent: 0,
+  };
+
+  if (reservaRes.ok) {
+    try {
+      const resText = await reservaRes.text();
+      const resRows = parseCSV(resText);
+      const target = parseCurrencyString(resRows[3]?.[3]) || 5000;
+      const current = parseCurrencyString(resRows[8]?.[1]) || 0;
+      const remaining = parseCurrencyString(resRows[8]?.[5]) || Math.max(0, target - current);
+      const progressStr = resRows[8]?.[7] || '0%';
+      const parsedPct = parseFloat(progressStr.replace('%', '').replace(',', '.'));
+      const progressPercent = !isNaN(parsedPct) ? parsedPct : (target > 0 ? (current / target) * 100 : 0);
+
+      reserve = {
+        target: Number(target.toFixed(2)),
+        current: Number(current.toFixed(2)),
+        remaining: Number(remaining.toFixed(2)),
+        progressPercent: Number(progressPercent.toFixed(1)),
+      };
+    } catch (e) {
+      console.warn('Erro ao processar aba Reserva de Emergência:', e);
+    }
+  }
+
   memoryCache = {
     period,
     sheetMetrics: {
@@ -190,18 +232,23 @@ export async function fetchRawData(forceRefresh = false): Promise<RawDataCache> 
     },
     allTransactions,
     availableMonths: Array.from(monthsSet),
+    reserve,
     fetchedAt: Date.now(),
   };
 
   return memoryCache;
 }
 
-export async function getFinanceData(month = 'December/2026', forceRefresh = false): Promise<FinanceData> {
+export async function getFinanceData(month?: string, forceRefresh = false): Promise<FinanceData> {
   const rawData = await fetchRawData(forceRefresh);
 
-  // Filtrar pelo mês selecionado
+  const selectedMonth = month || rawData.availableMonths[0] || 'ALL';
+
+  // Filtrar pelo mês selecionado (suporta comparação flexível caso haja diferença de maiúsculas)
   const currentTransactions = rawData.allTransactions.filter((tx) =>
-    month === 'ALL' ? true : tx.month === month
+    selectedMonth === 'ALL'
+      ? true
+      : tx.month === selectedMonth || tx.month?.toLowerCase() === selectedMonth.toLowerCase()
   );
 
   // Ordenar transações: Entradas primeiro sempre, e depois por data
@@ -277,8 +324,9 @@ export async function getFinanceData(month = 'December/2026', forceRefresh = fal
     paidExpensePercent,
     paidIncomePercent,
     topCategory,
+    reserve: rawData.reserve,
     period: rawData.period,
-    selectedMonth: month,
+    selectedMonth,
     availableMonths: rawData.availableMonths,
     sheetMetrics: rawData.sheetMetrics,
   };

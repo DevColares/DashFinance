@@ -22,7 +22,7 @@ export default function WidgetPage() {
   const loadData = async (force = false) => {
     try {
       setRefreshing(true);
-      const data = await getFinanceData('December/2026', force);
+      const data = await getFinanceData(undefined, force);
       if (data.summary) {
         setSummary(data.summary);
       }

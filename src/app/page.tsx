@@ -30,6 +30,8 @@ import {
   Sparkles,
   ArrowRight,
   Filter,
+  ShieldCheck,
+  Target,
 } from 'lucide-react';
 import {
   PieChart,
@@ -130,12 +132,30 @@ const MONTH_NAMES_PT: Record<string, string> = {
   October: 'Outubro',
   November: 'Novembro',
   December: 'Dezembro',
+  // Caso venha em português
+  janeiro: 'Janeiro',
+  fevereiro: 'Fevereiro',
+  marco: 'Março',
+  'março': 'Março',
+  abril: 'Abril',
+  maio: 'Maio',
+  junho: 'Junho',
+  julho: 'Julho',
+  agosto: 'Agosto',
+  setembro: 'Setembro',
+  outubro: 'Outubro',
+  novembro: 'Novembro',
+  dezembro: 'Dezembro',
 };
 
 function formatMonthLabel(monthStr: string): string {
   if (monthStr === 'ALL') return 'Todos os Meses (Geral)';
-  const [engMonth, year] = monthStr.split('/');
-  const ptMonth = MONTH_NAMES_PT[engMonth] || engMonth;
+  const [mName, year] = monthStr.split('/');
+  const lowerName = (mName || '').toLowerCase();
+  const ptMonth =
+    MONTH_NAMES_PT[mName] ||
+    MONTH_NAMES_PT[lowerName] ||
+    (mName ? mName.charAt(0).toUpperCase() + mName.slice(1) : '');
   return year ? `${ptMonth} de ${year}` : ptMonth;
 }
 
@@ -153,7 +173,7 @@ export default function FinanceDashboard() {
   const [filterType, setFilterType] = useState<'ALL' | 'Entrada' | 'Saída'>('ALL');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'Realizado' | 'Previsto'>('ALL');
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
-  const [selectedMonth, setSelectedMonth] = useState<string>('December/2026');
+  const [selectedMonth, setSelectedMonth] = useState<string>('');
 
   // Inicializar preferências do localStorage
   useEffect(() => {
@@ -191,6 +211,9 @@ export default function FinanceDashboard() {
         setSummary(data.summary);
         setTransactions(data.transactions);
         setExpenseByCategory(data.expenseByCategory);
+        if (!selectedMonth && data.summary.selectedMonth) {
+          setSelectedMonth(data.summary.selectedMonth);
+        }
       }
     } catch (err) {
       console.error('Erro ao buscar dados:', err);
@@ -201,11 +224,11 @@ export default function FinanceDashboard() {
   };
 
   useEffect(() => {
-    fetchData(selectedMonth);
+    fetchData(selectedMonth || undefined);
   }, [selectedMonth]);
 
   const availableMonths = useMemo(() => {
-    return summary?.availableMonths || ['December/2026'];
+    return summary?.availableMonths || [];
   }, [summary]);
 
   // Navegação rápida de mês
@@ -664,46 +687,55 @@ export default function FinanceDashboard() {
             </div>
           </div>
 
-          {/* Card Maior Categoria */}
+          {/* Card Reserva de Emergência */}
           <div
             className={`rounded-2xl p-5 border transition-all duration-300 hover:-translate-y-1 hover:shadow-lg ${
               isLight
-                ? 'bg-white border-slate-200 hover:border-slate-300 shadow-slate-200/40'
-                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-slate-700 shadow-black/20'
+                ? 'bg-white border-slate-200 hover:border-emerald-500/50 shadow-slate-200/40'
+                : 'bg-gradient-to-b from-slate-900/90 to-slate-900/50 backdrop-blur-md border-slate-800/80 hover:border-emerald-500/40 shadow-black/20'
             }`}
           >
             <div className="flex items-center justify-between">
               <span className={`text-xs font-semibold uppercase tracking-wider ${isLight ? 'text-slate-500' : 'text-slate-400'}`}>
-                Maior Impacto
+                Reserva de Emergência
               </span>
               <div
-                className="p-2 rounded-xl border"
-                style={{
-                  backgroundColor: `${getCategoryColor(summary?.topCategory.name || '')}15`,
-                  borderColor: `${getCategoryColor(summary?.topCategory.name || '')}30`,
-                  color: getCategoryColor(summary?.topCategory.name || ''),
-                }}
+                className={`p-2 rounded-xl ${
+                  isLight ? 'bg-emerald-50 text-emerald-600' : 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                }`}
               >
-                <AlertCircle className="w-4 h-4" />
+                <ShieldCheck className="w-4 h-4" />
               </div>
             </div>
 
             <div className="mt-3">
-              <div className="flex items-center gap-2">
-                <span
-                  className="w-2.5 h-2.5 rounded-full flex-shrink-0 animate-pulse"
-                  style={{ backgroundColor: getCategoryColor(summary?.topCategory.name || '') }}
-                />
-                <h3
-                  className="text-2xl font-black tracking-tight truncate"
-                  style={{ color: getCategoryColor(summary?.topCategory.name || '') }}
-                >
-                  {summary?.topCategory.name || '-'}
+              <div className="flex items-baseline justify-between gap-2">
+                <h3 className={`text-2xl font-black tracking-tight tabular-nums ${isLight ? 'text-emerald-600' : 'text-emerald-400'}`}>
+                  {formatBRL(summary?.reserve?.current ?? 0)}
                 </h3>
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  {summary?.reserve?.progressPercent ?? 0}% da meta
+                </span>
               </div>
-              <p className={`text-xs mt-2 font-mono ${isLight ? 'text-slate-600' : 'text-slate-400'}`}>
-                Total: <strong className="text-slate-200">{formatBRL(summary?.topCategory.amount || 0)}</strong>
-              </p>
+
+              {/* Barra de Progresso no mesmo estilo */}
+              <div className="mt-3 w-full bg-slate-200 dark:bg-slate-800/80 rounded-full h-1.5 overflow-hidden flex">
+                <div
+                  className="bg-emerald-500 h-full transition-all duration-500"
+                  style={{ width: `${Math.min(100, summary?.reserve?.progressPercent ?? 0)}%` }}
+                />
+                <div className="bg-emerald-500/20 h-full flex-1" />
+              </div>
+
+              <div className="mt-2.5 flex items-center justify-between text-[11px] gap-1 font-mono">
+                <span className="flex items-center gap-1 text-slate-400">
+                  <Target className="w-3 h-3 flex-shrink-0 text-emerald-500" />
+                  <span>Meta: {formatBRL(summary?.reserve?.target ?? 0)}</span>
+                </span>
+                <span className="flex items-center gap-1 text-slate-400">
+                  <span>Falta: {formatBRL(summary?.reserve?.remaining ?? 0)}</span>
+                </span>
+              </div>
             </div>
           </div>
         </div>
